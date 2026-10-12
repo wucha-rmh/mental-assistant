@@ -1,0 +1,21 @@
+# ===== 构建产物 =====
+target/
+
+# ===== IDE - IntelliJ IDEA =====
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# ===== IDE - VS Code =====
+.vscode/
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
+
+# ===== Spring Boot 自动生成的说明文件 =====
+HELP.md
+
+# ===== 日志 =====
+*.log

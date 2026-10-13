@@ -18,7 +18,7 @@ public class GlobalExceptionHandler {
         String message=e.getBindingResult().getFieldErrors().stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.joining(","));
-        return Result.error(Resultcode.PARAM_ERROR.getCode(),Resultcode.PARAM_ERROR.getMsg(),message);
+        return Result.error(ResultCode.PARAM_ERROR.getCode(), ResultCode.PARAM_ERROR.getMsg(),message);
     }
     //处理业务异常
     @ExceptionHandler(BusinessException.class)

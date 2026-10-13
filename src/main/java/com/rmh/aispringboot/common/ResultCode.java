@@ -1,6 +1,6 @@
 package com.rmh.aispringboot.common;
 
-public enum Resultcode {
+public enum ResultCode {
     SUCCESS("200", "操作成功"),
     ERROR("-1", "操作失败"),
     UNAUTHORIZED("401", "暂未登录或token已经过期"),
@@ -38,7 +38,7 @@ public enum Resultcode {
     private String code;
     private String msg;
 
-    Resultcode(String code, String msg) {
+    ResultCode(String code, String msg) {
         this.code = code;
         this.msg = msg;
     }

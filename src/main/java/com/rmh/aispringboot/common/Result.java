@@ -10,8 +10,8 @@ public class Result<T>{
     public static <T> Result<T> ok()
     {
         Result<T> result=new Result<>();
-        result.setCode(Resultcode.SUCCESS.getCode());
-        result.setMsg(Resultcode.SUCCESS.getMsg());
+        result.setCode(ResultCode.SUCCESS.getCode());
+        result.setMsg(ResultCode.SUCCESS.getMsg());
         return result;
     }
 
@@ -25,8 +25,8 @@ public class Result<T>{
     public static <T> Result<T> error()
     {
         Result<T> result=new Result<>() ;
-        result.setCode(Resultcode.ERROR.getCode());
-        result.setMsg(Resultcode.ERROR.getMsg());
+        result.setCode(ResultCode.ERROR.getCode());
+        result.setMsg(ResultCode.ERROR.getMsg());
         return result;
     }
 

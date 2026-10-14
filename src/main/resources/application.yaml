@@ -3,6 +3,19 @@ spring:
     url: jdbc:mysql://localhost:3306/mental_health_assistant?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
     password: 123456
+  profiles:
+    include: local
+  ai:
+    openai:
+      chat:
+        options:
+          model: deepseek-flash
+          tool-calling:
+            enabled: true
+        completions-path: /v1/chat/completions
+      base-url: https://api.deepseek.com
+
+
 
 #服务器端口
 server:
@@ -16,3 +29,4 @@ jwt:
   refresh-expiration: 604800000  # 7天（毫秒）
   header: Authorization  # token头部名称
   token-prefix: "Bearer "  # token前缀
+

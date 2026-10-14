@@ -12,6 +12,9 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.servlet.view.freemarker.FreeMarkerConfig;
 
 import java.util.Date;
 
@@ -55,6 +58,35 @@ public class JwtTokenUtil implements ApplicationContextAware {
             throw new RuntimeException("生成Token失败，原因是："+ e);
         }
     }
+    //提取现在的Token
+    public static String getCurrentToken()
+    {
+        ServletRequestAttributes requestAttributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if(requestAttributes!=null)
+        {
+            HttpServletRequest request = requestAttributes.getRequest();
+            String jwtToken =(String) request.getAttribute("jwtToken");
+            if(jwtToken!=null)
+            {
+                return jwtToken;
+            }
+            //备用方案：从请求头获取
+            String headerToken=extractTokenFromRequest(request);
+            return headerToken;
+        }
+        return null;
+    }
+
+    //获取当前用户ID
+    public static Long getCurrentUserId()
+    {
+        //获取当前用户
+        String currentToken = JwtTokenUtil.getCurrentToken();
+        DecodedJWT decodedJWT = JwtTokenUtil.verifyToken(currentToken);
+        return decodedJWT.getClaim("userId").asLong();
+    }
+
+
     //提取token
     public static String extractTokenFromRequest(HttpServletRequest request)
     {

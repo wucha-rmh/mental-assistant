@@ -19,3 +19,6 @@ HELP.md
 
 # ===== 日志 =====
 *.log
+#本地敏感信息
+application-local.yaml
+

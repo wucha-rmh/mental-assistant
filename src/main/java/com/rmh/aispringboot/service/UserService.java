@@ -5,7 +5,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.rmh.aispringboot.DTO.command.UserLoginCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
-import com.rmh.aispringboot.common.Result;
 import com.rmh.aispringboot.entity.User;
 import com.rmh.aispringboot.enumClass.UserType;
 import com.rmh.aispringboot.exception.BusinessException;
@@ -79,12 +78,20 @@ public class UserService {
         //创建用户
         String password = commandDTO.getPassword().trim();
         String encodedPassword = passwordEncoder.encode(password);
-        User user = UserConvert.registerCommadnToEntity(commandDTO,encodedPassword);
+        User user = UserConvert.registerCommandToEntity(commandDTO,encodedPassword);
 
         //插入数据库
         userMapper.insert(user);
 
         return UserConvert.entityToDetaiResponse(user);
 
+    }
+    public UserLoginResponseDTO.UserDetailResponseDTO getUserById(Long userid) {
+        User user=userMapper.selectById(userid);
+        if(user==null)
+        {
+            throw new BusinessException("用户不存在");
+        }
+        return UserConvert.entityToDetaiResponse(user);
     }
 }

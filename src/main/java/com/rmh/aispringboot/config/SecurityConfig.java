@@ -1,7 +1,7 @@
 package com.rmh.aispringboot.config;
 
 import cn.hutool.core.text.AntPathMatcher;
-import com.rmh.aispringboot.util.JwtAuthticationFilter;
+import com.rmh.aispringboot.util.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -34,8 +34,8 @@ public class SecurityConfig {
         return false;
     }
     @Bean
-    public JwtAuthticationFilter  jwtAuthticationFilter(){
-        return new JwtAuthticationFilter();
+    public JwtAuthenticationFilter jwtAuthticationFilter(){
+        return new JwtAuthenticationFilter();
     }
 
     @Bean

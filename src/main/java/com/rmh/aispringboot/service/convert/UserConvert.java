@@ -41,7 +41,7 @@ public class UserConvert {
     }
 
 
-    public static User registerCommadnToEntity(UserRegisterCommandDTO commandDTO,String encodedpassword)
+    public static User registerCommandToEntity(UserRegisterCommandDTO commandDTO, String encodedpassword)
     {
         return User.builder()
                 .username(commandDTO.getUsername())

@@ -21,7 +21,6 @@ public class ChatClientConfig {
     public ChatClient chatClient(OpenAiChatModel openAiChatModel){
         return  ChatClient.builder(openAiChatModel)
                 .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory()).build())
-                .defaultSystem("你是一个专业的心理疏导师")
                 .build();
     }
 }

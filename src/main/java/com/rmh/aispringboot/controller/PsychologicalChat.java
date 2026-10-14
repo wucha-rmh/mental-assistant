@@ -24,7 +24,7 @@ import java.time.Duration;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/psychological-chat")
 public class PsychologicalChat{
     @Autowired
     private PsychologicalSupportService psychologicalSupportService;
@@ -70,7 +70,7 @@ public class PsychologicalChat{
                                 .event("done")
                                 .data("{}")
                         .build()))
-                .delayElements(Duration.ofMillis(50));//添加延时，确保流式输出体验
+                .delayElements(Duration.ofMillis(10));//添加延时，确保流式输出体验
 
     }
 }

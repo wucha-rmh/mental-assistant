@@ -26,11 +26,7 @@ public class User {
     @PostMapping("/login")
     public Result<UserLoginResponseDTO> login(@Valid @RequestBody UserLoginCommandDTO userLoginCommandDTO)
     {
-
-        System.out.println(userLoginCommandDTO.getUsername());
-        System.out.println(userLoginCommandDTO.getPassword());
         UserLoginResponseDTO userLoginResponseDTO = userService.login(userLoginCommandDTO);
-
         return Result.ok(userLoginResponseDTO);
     }
     //用户注册接口

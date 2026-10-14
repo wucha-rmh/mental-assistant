@@ -8,15 +8,11 @@ import com.rmh.aispringboot.service.ConsultationMessageService;
 import com.rmh.aispringboot.service.ConsultationSessionService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import org.springframework.util.Assert;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
@@ -89,9 +85,9 @@ public class PsychologicalSupportService {
             //生成对话记忆管理
             String conversationId="conversation_"+sessionIdString;
             //构建系统提示词
-            List<Message> userMessages=new ArrayList<>();
-            userMessages.add(new UserMessage(userMessage));
-            chatMemory.add(conversationId,userMessages);
+//            List<Message> userMessages=new ArrayList<>();
+//            userMessages.add(new UserMessage(userMessage));
+//            chatMemory.add(conversationId,userMessages);
             Prompt prompt = new Prompt(List.of(
                     new SystemMessage(PromptManage.PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT)
             ));
@@ -112,9 +108,9 @@ public class PsychologicalSupportService {
                         String completeRes = fullResponse.toString();
                         consultationMessageService.saveAiMessage(dbSessionId,completeRes,"openai");
                         //添加AI回复到chatMemory
-                        List<Message> aiMessages = new ArrayList<>();
-                        aiMessages.add(new AssistantMessage(completeRes));
-                        chatMemory.add(conversationId,aiMessages);
+//                        List<Message> aiMessages = new ArrayList<>();
+//                        aiMessages.add(new AssistantMessage(completeRes));
+//                        chatMemory.add(conversationId,aiMessages);
                         sink.complete();
                     })
                     .doOnError(error->{

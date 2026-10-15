@@ -1,11 +1,14 @@
 package com.rmh.aispringboot.service;
 
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rmh.aispringboot.DTO.command.UserLoginCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
 import com.rmh.aispringboot.DTO.response.FileUploadResponseDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
 import com.rmh.aispringboot.entity.User;
+import com.rmh.aispringboot.enumClass.UserStatus;
 import com.rmh.aispringboot.exception.BusinessException;
 import com.rmh.aispringboot.mapper.UserMapper;
 import com.rmh.aispringboot.service.convert.UserConvert;
@@ -17,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.stream.Collectors;
 
 @Service
 public class UserService {
@@ -134,6 +138,81 @@ public class UserService {
                 && !oldAvatar.equals(stored.getFilePath())) {
             fileStorageService.deleteStoredFile(oldAvatar);
         }
+
+        return UserConvert.entityToDetaiResponse(user);
+    }
+
+    /**
+     * 分页查询用户（管理员用）
+     *
+     * <p>返回体复用 {@link UserLoginResponseDTO.UserDetailResponseDTO}（不含密码字段），
+     * 前端表格直接渲染。
+     *
+     * @param keyword  模糊匹配用户名 / 昵称 / 邮箱，空白表示不过滤
+     * @param status   按状态过滤：0 禁用 / 1 正常，null 表示不过滤
+     * @param userType 按用户类型过滤：1 普通用户 / 2 管理员，null 表示不过滤
+     */
+    public Page<UserLoginResponseDTO.UserDetailResponseDTO> pageUsers(
+            String keyword, Integer status, Integer userType, int page, int size) {
+
+        LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
+        if (StrUtil.isNotBlank(keyword)) {
+            String kw = keyword.trim();
+            queryWrapper.and(w -> w.like(User::getUsername, kw)
+                    .or().like(User::getNickname, kw)
+                    .or().like(User::getEmail, kw));
+        }
+        if (status != null) {
+            queryWrapper.eq(User::getStatus, status);
+        }
+        if (userType != null) {
+            queryWrapper.eq(User::getUserType, userType);
+        }
+        queryWrapper.orderByDesc(User::getId);
+
+        Page<User> userPage = userMapper.selectPage(new Page<>(page, size), queryWrapper);
+
+        Page<UserLoginResponseDTO.UserDetailResponseDTO> result =
+                new Page<>(userPage.getCurrent(), userPage.getSize(), userPage.getTotal());
+        result.setRecords(userPage.getRecords().stream()
+                .map(UserConvert::entityToDetaiResponse)
+                .collect(Collectors.toList()));
+        return result;
+    }
+
+    /**
+     * 修改用户状态（管理员用）：0 = 禁用，1 = 正常
+     *
+     * <p>禁用**立即生效**，不需要等 token 过期：
+     * 登录时 {@link #login} 的 {@code isActive()} 判断会拦下（提示「用户被禁用，请联系管理员」），
+     * 已经签发出去的 token 也会在 {@code JwtAuthenticationFilter} 里因为状态不是「正常」
+     * 被拒绝（返回 {@code A0231 token已被禁止访问}）。
+     *
+     * <p>不允许管理员修改**自己**的状态，避免唯一的超管把自己锁在门外。
+     *
+     * @param userId 被修改的用户 ID
+     * @param status 目标状态（0 / 1），其它值抛业务异常
+     * @return 更新后的用户信息
+     */
+    public UserLoginResponseDTO.UserDetailResponseDTO updateStatus(Long userId, Integer status) {
+        UserStatus target;
+        try {
+            target = UserStatus.fromCode(status);
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException("不支持的用户状态：" + status);
+        }
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (userId.equals(SecurityUserUtil.currentUser().getId())) {
+            throw new BusinessException("不能修改自己的账号状态");
+        }
+
+        user.setStatus(target.getCode());
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
 
         return UserConvert.entityToDetaiResponse(user);
     }

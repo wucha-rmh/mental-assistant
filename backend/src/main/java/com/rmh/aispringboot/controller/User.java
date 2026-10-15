@@ -1,14 +1,13 @@
 package com.rmh.aispringboot.controller;
 
-import cn.hutool.json.JSONUtil;
-import com.auth0.jwt.interfaces.DecodedJWT;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rmh.aispringboot.DTO.command.UserLoginCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
+import com.rmh.aispringboot.DTO.command.UserStatusUpdateCommandDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
 import com.rmh.aispringboot.common.Result;
-import com.rmh.aispringboot.mapper.UserMapper;
 import com.rmh.aispringboot.service.UserService;
-import com.rmh.aispringboot.util.JwtTokenUtil;
+import com.rmh.aispringboot.util.SecurityUserUtil;
 import jakarta.annotation.Resource;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
@@ -70,6 +69,46 @@ public class User {
     @PostMapping("/logout")
     public Result<Void> logout() {
         return Result.ok();
+    }
+
+    /**
+     * 用户列表（管理员）
+     *
+     * <p>分页参数兼容两套命名：用户端 {@code pageNum/pageSize}、后台 {@code currentPage/size}。
+     * 返回体是 {@code UserDetailResponseDTO}（无密码字段），含 {@code status}/{@code statusDisplayName}
+     * 与 {@code userType}/{@code userTypeDisplayName} 供表格渲染。
+     */
+    @GetMapping("/admin/page")
+    public Result<Page<UserLoginResponseDTO.UserDetailResponseDTO>> pageUsers(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) Integer userType,
+            @RequestParam(required = false) Integer pageNum,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) Integer currentPage,
+            @RequestParam(required = false) Integer size) {
+
+        SecurityUserUtil.requireAdmin();
+
+        int page = pageNum != null ? pageNum : (currentPage != null ? currentPage : 1);
+        int limit = pageSize != null ? pageSize : (size != null ? size : 10);
+
+        return Result.ok(userService.pageUsers(keyword, status, userType, page, limit));
+    }
+
+    /**
+     * 修改用户状态（管理员）：0 = 禁用，1 = 正常
+     *
+     * <p>禁用立即生效（登录被拦 + 已签发 token 被 {@code JwtAuthenticationFilter} 拒绝）；
+     * 管理员不能改自己的状态。
+     */
+    @PutMapping("/admin/{id}/status")
+    public Result<UserLoginResponseDTO.UserDetailResponseDTO> updateUserStatus(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody UserStatusUpdateCommandDTO commandDTO) {
+
+        SecurityUserUtil.requireAdmin();
+        return Result.ok(userService.updateStatus(id, commandDTO.getStatus()));
     }
 //    @GetMapping("/current")
 //    public Result<UserLoginResponseDTO.UserDetailResponseDTO> getCurrentUser(){

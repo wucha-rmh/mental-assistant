@@ -42,6 +42,14 @@ const backendRoutes = [
                     title: '情绪日志',
                     icon: 'User'
                 }
+            },
+            {
+                path: 'users',
+                component: () => import('@/views/users.vue'),
+                meta: {
+                    title: '用户管理',
+                    icon: 'UserFilled'
+                }
             }
         ]
     },

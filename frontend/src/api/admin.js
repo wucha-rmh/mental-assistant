@@ -65,6 +65,14 @@ export function deleteEmotional(id) {
     return service.delete(`/emotion-diary/admin/${id}`)
 }
 
+export function getUserPage(params) {
+    return service.get('/user/admin/page', { params })
+}
+
+export function updateUserStatus(id, data) {
+    return service.put(`/user/admin/${id}/status`, data)
+}
+
 export function getAnalyticsOverview() {
     return service.get(`/data-analytics/overview`)
 }

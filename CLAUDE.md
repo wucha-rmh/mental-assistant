@@ -95,6 +95,7 @@ mysql -uroot -p123456 mental_health_assistant < db/schema.sql
 - 白名单：`/`、`/error`、`/api/test`、`/api/user/login`、`/api/user/register`、`/api/user/logout`、`/files/**`
   - `/files/**` **必须在白名单里**：上传的图片走 `<img src>`，浏览器不会带 `token` 头，不放行就会被 401 拦掉
 - 会话类接口内部还会用 `getSessionByIdAndUserId` **校验归属**（防越权）
+- `util/JwtAuthenticationFilter.java` **每个请求**都会按 token 里的 `userId` 查一次库并校验 `status == UserStatus.NORMAL`（=1）；不是「正常」一律 **HTTP 401 + `A0231 token已被禁止访问`**。这就是「管理员禁用用户后，他手里的 token 立即失效」的实现方式（见 `docs/api-contract.md` 一.2），**不要把这段状态校验删掉**
   - ⚠️ **管理员例外**：`GET /api/psychological-chat/sessions/{id}/messages` 走 `PsychologicalChat.requireVisibleSessionId`，
     管理员只校验「会话是否存在」。后台「咨询记录 → 详情」用的就是这个接口，列表接口对管理员本来就是全量 ——
     如果给它加回归属校验，就会出现「列表看得到、点进去报『会话不存在或无权访问』」。
@@ -394,6 +395,7 @@ taskkill //F //PID <pid>
 | 数据库结构可重建 | ✅ 2026-10-15 导出 `db/schema.sql` 并纳入仓库（`mysqldump --no-data`，8 张 `CREATE TABLE`；校验方式：导进临时库比对列数/索引/外键后 DROP）。⚠️ 改表后要重新导出并提交（见二「数据库」） |
 | 注册提权 | ✅ 2026-10-15 修复：注册请求体不再接收 `userType`，固定建普通用户（见三.2） |
 | 上传上限与异常兜底 | ✅ 2026-10-15：multipart 上限 1MB → 5MB、超限返回统一响应体 `5004`、`GlobalExceptionHandler` 增补 `Exception` 兜底（见三.4） |
+| 用户管理 | ✅ 2026-10-15 实现：管理员可看**用户列表**（关键字/状态/类型筛选 + 分页）并**禁用/启用**账号 —— `GET /api/user/admin/page`、`PUT /api/user/admin/{id}/status`（都走 `SecurityUserUtil.requireAdmin()`，新增 `DTO/command/UserStatusUpdateCommandDTO.java`），后台页面 `frontend/src/views/users.vue`（路由 `/back/users`）。「禁用立即生效」靠三.2 的过滤器状态校验，未新增禁用逻辑；管理员不能改自己的状态。详见 `docs/api-contract.md` 2.1 |
 | 登录限流 / CORS / 上传类型白名单 | ⬜ 2026-10-15 缺陷审计发现、尚未处理：登录接口公开且无限流/锁定；后端无任何 CORS 配置；上传无类型白名单且 `/files/**` 匿名可读 |
 | git 仓库 | ✅ 2026-10-15 起**只有一个仓库**（工作区根），`backend/` 已用 subtree 方式并入（后端原有提交历史保留），受跟踪文件 136 个；根仓库**无 remote**（未 push），旧后端 GitHub 仓库保留作归档。详见踩坑 11 |
 

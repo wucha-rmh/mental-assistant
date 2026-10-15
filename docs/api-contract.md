@@ -70,6 +70,7 @@ return Promise.reject(...)
 | 白名单 | `/`、`/error`、`/api/test`、`/api/user/login`、`/api/user/register`、`/api/user/logout` |
 | 未登录 / 无权限返回 | **HTTP 401** + `{"code":"A0301","msg":"访问未授权"}`（`ResponseUtil` 直写，不经过 `GlobalExceptionHandler`） |
 | token 无效 / 过期 | **HTTP 401** + `{"code":"A0230","msg":"token已过期"}` |
+| 账号被禁用 | **HTTP 401** + `{"code":"A0231","msg":"token已被禁止访问"}`。`JwtAuthenticationFilter` **每次请求**都会按 token 里的 `userId` 查一次库并校验 `status == 1`（`UserStatus.NORMAL`），所以管理员一禁用用户，他手里已签发的 token **立即失效**，不用等过期 |
 
 ### 3. 分页
 
@@ -222,6 +223,38 @@ Content-Type: multipart/form-data
 > - 非图片文件（如 `.md`）：先落盘判定为 `DOC`，随即删除文件与元数据行，返回 `{"code":"BUSINESS_ERROR","msg":"头像只能是图片文件（jpg / png / gif / webp / svg）"}`。
 > - 未换过头像的用户 `avatar` 为 `null`，前端回退到本地默认图 `/img/default-avatar.svg`。
 > - 前端：`api/frontend.js` 的 `uploadAvatar(file)` → `components/AvatarUploader.vue`（无可见 DOM，父组件 `pick()` 唤起文件框）→ 成功后 `stores/user.js` 的 `setInfo(返回的用户对象)`，导航栏/头部头像与昵称**无需刷新页面**即可更新。
+
+#### 用户列表与状态管理（仅管理员）
+
+```
+GET  /api/user/admin/page            （需 token + 管理员）
+PUT  /api/user/admin/{id}/status     （需 token + 管理员）
+```
+
+列表查询参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `keyword` | 否 | 模糊匹配 `username` / `nickname` / `email` |
+| `status` | 否 | `1` 正常 / `0` 禁用 ⚠️ `0` 必须真的发出去，前端用 `??` 而不是 `\|\|` |
+| `userType` | 否 | `1` 普通用户 / `2` 管理员 |
+| `currentPage` / `size` | 否 | 管理后台命名，默认 `1` / `10`；同时兼容 `pageNum` / `pageSize` |
+
+返回 `data`：MyBatis-Plus `Page`，`records` 每项是完整用户详情对象（字段同登录响应的 `userInfo`，含 `status`/`statusDisplayName`、`userType`/`userTypeDisplayName`，**不含 `password`**），按 `id` 倒序。
+
+修改状态请求体与返回：
+
+```json
+// 请求
+{ "status": 0 }
+```
+返回 `data`：**更新后的用户详情对象**（前端拿它就地替换表格里的那一行）。
+
+> - **禁用立即生效**：`UserService.login` 的 `isActive()` 判断会拦下重新登录（`{"code":"BUSINESS_ERROR","msg":"用户被禁用，请联系管理员"}`），已签发的 token 也会被 `JwtAuthenticationFilter` 拒绝（见 一.2）。
+> - **管理员不能修改自己的状态** → `{"code":"BUSINESS_ERROR","msg":"不能修改自己的账号状态"}`（防止唯一的超管把自己锁在门外）；前端也会把当前账号的「禁用」按钮置灰。
+> - 非法状态（如 `5`）→ `不支持的用户状态：5`；`status` 缺失 → `{"code":"400","msg":"状态不能为空"}`；用户不存在 → `用户不存在`。
+> - 非管理员调用 → `{"code":"BUSINESS_ERROR","msg":"无权访问，该接口仅管理员可用"}`（`SecurityUserUtil.requireAdmin()`）。
+> - 前端：`api/admin.js#getUserPage` / `#updateUserStatus` → `views/users.vue`（后台侧栏「用户管理」，路由 `/back/users`，图标 `UserFilled`）。
 
 ---
 
@@ -776,6 +809,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 数据库可重建性 | ✅ 2026-10-15 导出 `db/schema.sql`（`mysqldump --no-data`，8 张 `CREATE TABLE`，已纳入 git）。⚠️ 含 `DROP TABLE IF EXISTS`、**不含** `CREATE DATABASE`/`USE`；改完表结构要重新导出（见 `CLAUDE.md` 二） |
 | 注册提权 | ✅ 2026-10-15 修复：注册请求体不再接收 `userType`，固定建普通用户（见 2.1） |
 | 上传大小与异常兜底 | ✅ 2026-10-15：multipart 上限 1MB → 5MB、`MaxUploadSizeExceededException` 转统一响应体 `5004`、`GlobalExceptionHandler` 增补 `Exception` 兜底（见 2.6） |
+| 用户列表与状态管理 | ✅ 2026-10-15 实现（见 2.1）：管理员可看用户列表（关键字/状态/类型筛选 + 分页）并禁用/启用账号；禁用立即生效（登录被拦 + 已签发 token 返回 `A0231`），管理员不能改自己的状态 |
 | 登录限流 / CORS / 上传类型白名单 | ⬜ 2026-10-15 缺陷审计发现的剩余项，尚未处理：登录接口公开且无限流/锁定；后端无任何 CORS 配置；上传无类型白名单且 `/files/**` 匿名可读 |
 | 前端表单校验 | `ArticleDialog.vue` 的 `handleSubmit` 原先校验不通过也照发请求（已修成 `if (!valid) return`）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 
@@ -784,7 +818,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 ## 五、前端调用 vs 后端实现（对齐状态）
 
 后端目前有七个 Controller（`Test`、`User`、`PsychologicalChat`、`Knowledge`、`EmotionDiary`、`DataAnalytics`、`File`），
-共 **26 个接口**（另有 `/files/**` 静态资源映射，不计入接口数）。`frontend/src/api/` 里的调用**已全部有后端实现**，下表保留作为对照：
+共 **28 个接口**（另有 `/files/**` 静态资源映射，不计入接口数）。`frontend/src/api/` 里的调用**已全部有后端实现**，下表保留作为对照：
 
 | 前端调用 | 调用位置 | 后端 |
 |---|---|---|
@@ -802,6 +836,8 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | `DELETE /api/knowledge/article/{id}` | `api/admin.js` → `views/knowledge.vue` | ✅ 已实现（见 2.3） |
 | `POST /api/file/upload` | `api/admin.js` → `components/ArticleDialog.vue` | ✅ 已实现（本地存储，见 2.6） |
 | `POST /api/user/avatar` | `api/frontend.js` → `components/AvatarUploader.vue` | ✅ 已实现（见 2.1） |
+| `GET /api/user/admin/page` | `api/admin.js` → `views/users.vue` | ✅ 已实现（见 2.1） |
+| `PUT /api/user/admin/{id}/status` | `api/admin.js` → `views/users.vue` | ✅ 已实现（见 2.1） |
 | `GET /api/data-analytics/overview` | `api/admin.js` → `views/dashboard.vue` | ✅ 已实现（见 2.5） |
 
 
@@ -829,6 +865,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **删除已废弃的「日记 AI 分析」链路**：整表 DROP `ai_analysis_task`（14 行、11 索引、代码 0 引用）；`emotion_diary` 删 `ai_emotion_analysis`/`ai_analysis_updated_at`（列数 9 → 7，`idx_ai_analysis_time` 随列消失）；`consultation_message` 删 `emotion_tag`（列数 8 → 7，全 NULL、从未写入）。库 **9 → 8 张表**、外键 8 → 7。后端 7 处（`entity/EmotionDiary`、`DTO/response/EmotionDiaryAdminItemDTO`、`EmotionDiaryService` 含整个 `normalizeAiAnalysis`、`entity/ConsultationMessage`、`ConsultationMessageResponseDTO`、`ConsultationMessageService.saveUserMessage` 签名、`PsychologicalSupportService` 两处调用）与前端 `views/emotional.vue` 6 处（「AI情绪分析结果」弹窗区块、四个 `getAi*/getRisk*` 函数、`.ai-analysis-result` 样式）同步删净；`grep aiEmotionAnalysis\|emotionTag\|normalizeAiAnalysis` 在 `backend/src` 只剩一句 javadoc 说明，`mvn -B -q compile` 通过，Vite 产物无残留标识符。**保留**：`consultation_session.last_emotion_analysis`/`last_emotion_updated_at` 与会话情绪分析整套（见 2.2）。10 项端到端实测全过：登录、会话列表、消息列表（响应已无 `emotionTag`）、会话情绪分析仍可用（`低落`/`riskLevel=1`）、后台与用户端日记分页（响应已无 ai 字段）、新增+删除日记（库回 19 行）、看板 overview、库结构核对（表 8、各表行数不变、查已删表报 `1146`、查已删列报 `1054`）。改前全库备份 `.db-backup/mental_health_assistant_full_20261015-175210.sql`。 |
 | 2026-10-15 | **缺陷审计后的第一批修复：提权 + 上传上限 + 异常兜底 + 阅读量自增 + 库结构入库**。① **注册提权**——改动前实测 `POST /api/user/register` 带 `"userType":2` 会真的建出管理员（响应 `"userType":2,"userTypeDisplayName":"管理员"`，该账号可调 `GET /api/data-analytics/overview`）；修复：`DTO/command/UserRegisterCommandDTO.java` 删掉 `userType` 字段、`service/convert/UserConvert.java` 固定 `.userType(UserType.USER.getCode())`，实测响应恒为 `userType=1`、该账号调管理接口得 `无权访问，该接口仅管理员可用`。② **上传上限 1MB → 5MB + 异常兜底**——`application.yaml` 增加 `spring.servlet.multipart.max-file-size: 5MB` / `max-request-size: 10MB`；`common/GlobalExceptionHandler.java` 新增 `MaxUploadSizeExceededException`（→ `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`，HTTP 200）与 `Exception` 兜底（→ `{"code":"500","msg":"服务器开小差了，请稍后再试"}` + `log.error`）。实测：2MB 上传由「HTTP 413 + 空响应体」变为 `code=200`；6MB 上传返回统一体 `5004` 且库里不留 `sys_file_info` 记录。③ **`read_count` 自增**（规则见 2.3）：实测普通用户读 → 15→16 且响应 `readCount=16`，管理员读 → 保持 16。④ **`db/schema.sql` 纳入仓库**（见第四节）。⑤ 顺带修掉三处隐患：`UserService.register` 里把**含明文密码**的注册体打到控制台的 `System.out.println(JSONUtil.parseObj(commandDTO))`、`login` 的 `WHERE username=? OR password=?` 误写（改为只按 `username` 查，与 `UserDetailsService` 一致）、`frontend/src/views/register.vue` 不再提交 `userType`。`mvn -B -q compile` 通过；6 组端到端实测通过（提权被拦、2MB 通过、6MB 统一报错、阅读量计数、登录的 正确/密码错/用户不存在 三种情形、清理后库回到 5 用户 / 10 文件 / 8 文章）。 |
 | 2026-10-15 | **修复「后台咨询记录点详情报无权访问」**：`GET /api/psychological-chat/sessions/{sessionId}/messages` 原本无条件走归属校验（会话 `user_id` 必须等于登录用户），而后台「咨询记录 → 详情」调的就是这个接口 → 管理员点开用户会话得到 `会话不存在或无权访问`。新增 `PsychologicalChat.requireVisibleSessionId`（管理员只校验会话存在，不存在时返回 `会话不存在`；普通用户仍走原归属校验，且「不存在」与「非本人」返回同一句提示，不泄露存在性）与 `ConsultationSessionService.getSessionById`（不校验归属，仅供已判权限的调用方使用，见第三节）。删除会话与情绪分析**仍严格校验归属**。实测：管理员读他人会话 17（`user_id=2`）→ `code=200` + 消息数组；tester 读同一会话 → `会话不存在或无权访问`；管理员读 `999999` → `会话不存在`；tester 读自己的 35 → `code=200`（回归）；管理员传前缀格式 `session_17` → `code=200`；无 token → `A0301`；管理员删除他人会话仍被拒。 |
+| 2026-10-15 | **新增「用户管理」：管理员可查看用户列表并禁用/启用账号**。后端 `controller/User.java` 新增 `GET /api/user/admin/page`（`keyword` 模糊匹配用户名/昵称/邮箱，`status`/`userType` 筛选 + 分页，参数同时兼容 `currentPage/size` 与 `pageNum/pageSize`）与 `PUT /api/user/admin/{id}/status`（请求体 `{"status":0\|1}`），两者都先过 `SecurityUserUtil.requireAdmin()`；`service/UserService.java` 新增 `pageUsers(...)`（返回体复用 `UserDetailResponseDTO`，**不含密码字段**，按 id 倒序）与 `updateStatus(...)`（用 `UserStatus.fromCode` 校验取值、**禁止管理员修改自己的状态**）；新增 `DTO/command/UserStatusUpdateCommandDTO.java`。前端新增 `views/users.vue`（筛选栏 + 表格 + 分页 + 禁用/启用二次确认；当前账号的「禁用」按钮置灰）与路由 `/back/users`（侧栏菜单由路由表自动生成，无需改 `Sidebar.vue`），`api/admin.js` 增 `getUserPage` / `updateUserStatus`。**「禁用立即生效」没有新增逻辑**，靠已有两处：`UserService.login` 的 `isActive()` 判断（`{"code":"BUSINESS_ERROR","msg":"用户被禁用，请联系管理员"}`）与 `JwtAuthenticationFilter` 每请求校验 `status == 1`（旧 token → `{"code":"A0231","msg":"token已被禁止访问"}`）。14 组端到端实测全过：列表（`total=5`、首行 16 个字段、无 `password`）、关键字/状态/类型三种筛选、普通用户调用被拒（`无权访问，该接口仅管理员可用`）、注册探针账号 → 管理员禁用（库中 `status=0`）→ 探针**旧 token 立即失效**且重新登录被拦 → 启用后恢复正常登录、改自己状态被拒（`不能修改自己的账号状态`）、非法状态（`不支持的用户状态：5`）、`status` 缺失（`{"code":"400","msg":"状态不能为空"}`）、不存在的用户（`用户不存在`）、tester 越权改 admin 状态被拒；清理后库回到 5 个用户、`total=5`。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。
 

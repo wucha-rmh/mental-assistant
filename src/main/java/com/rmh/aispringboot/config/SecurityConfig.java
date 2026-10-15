@@ -20,6 +20,7 @@ public class SecurityConfig {
     private static final AntPathMatcher antPathMatcher = new AntPathMatcher();
     private static final String[] PUBLIC_PATH = {
             "/",
+            "/error",
             "/api/test",
             "/api/user/login",
             "/api/user/register"

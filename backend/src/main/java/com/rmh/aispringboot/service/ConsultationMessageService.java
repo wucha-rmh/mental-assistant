@@ -15,14 +15,13 @@ import java.util.stream.Collectors;
 public class ConsultationMessageService {
     @Autowired
     private ConsultationMessageMapper consultationMessageMapper;
-    public ConsultationMessage saveUserMessage(Long sessionId,String content,String emotion_tag){
+    public ConsultationMessage saveUserMessage(Long sessionId,String content){
         //构建用户消息实体
         ConsultationMessage userMeaasge = ConsultationMessage.builder()
                 .sessionId(sessionId)
                 .senderType(1)
                 .messageType(1)
                 .content(content)
-                .emotionTag(emotion_tag)
                 .createdAt(LocalDateTime.now())
                 .build();
         consultationMessageMapper.insert(userMeaasge);
@@ -91,7 +90,6 @@ public class ConsultationMessageService {
         responseDTO.setSenderType(message.getSenderType());
         responseDTO.setMessageType(message.getMessageType());
         responseDTO.setContent(message.getContent());
-        responseDTO.setEmotionTag(message.getEmotionTag());
         responseDTO.setAiModel(message.getAiModel());
         responseDTO.setCreatedAt(message.getCreatedAt());
 

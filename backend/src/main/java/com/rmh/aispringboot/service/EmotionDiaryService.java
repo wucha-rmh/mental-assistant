@@ -1,8 +1,5 @@
 package com.rmh.aispringboot.service;
 
-import cn.hutool.json.JSONArray;
-import cn.hutool.json.JSONObject;
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -112,8 +109,8 @@ public class EmotionDiaryService {
      * 「记录今天的心情」的单页表单，所以同一天重复提交按**覆盖**处理而不是报错。
      * {@code userId} 一律取自登录态，不接受前端传入（防写别人的日记）。
      *
-     * <p>注意：{@code ai_emotion_analysis} 属于「情绪分析」未实现项，这里不写也不清，
-     * 接入 AI 分析后再补上（见 CLAUDE.md 第六节）。
+     * <p>注意：原先预留的 {@code ai_emotion_analysis} / {@code ai_analysis_updated_at} 两列
+     * 已于 2026-10-15 随「日记 AI 分析」一起删除，日记只剩心情评分 + 今日感想。
      */
     public EmotionDiaryAdminItemDTO saveDiary(Long userId, EmotionDiaryCreateCommandDTO command) {
         LocalDate diaryDate = parseDiaryDate(command.getDiaryDate());
@@ -258,37 +255,8 @@ public class EmotionDiaryService {
                 .diaryDate(diary.getDiaryDate())
                 .moodScore(diary.getMoodScore())
                 .diaryContent(diary.getDiaryContent())
-                .aiEmotionAnalysis(normalizeAiAnalysis(diary.getAiEmotionAnalysis()))
-                .aiAnalysisUpdatedAt(diary.getAiAnalysisUpdatedAt())
                 .createdAt(diary.getCreatedAt())
                 .updatedAt(diary.getUpdatedAt())
                 .build();
-    }
-
-    /**
-     * 规范化 AI 分析 JSON。
-     *
-     * <p>前端对 {@code aiEmotionAnalysis} 直接 {@code JSON.parse} 且没有 try/catch，
-     * 所以：非法 JSON 一律转成 null；缺少 {@code improvementSuggestions} 时补一个空数组，
-     * 避免前端 {@code v-for} over undefined 把页面打崩。
-     */
-    private String normalizeAiAnalysis(String raw) {
-        if (!StringUtils.hasText(raw)) {
-            return null;
-        }
-        String trimmed = raw.trim();
-        if (!trimmed.startsWith("{")) {
-            return null;
-        }
-        try {
-            JSONObject object = JSONUtil.parseObj(trimmed);
-            Object suggestions = object.get("improvementSuggestions");
-            if (!(suggestions instanceof JSONArray)) {
-                object.set("improvementSuggestions", new JSONArray());
-            }
-            return object.toString();
-        } catch (Exception e) {
-            return null;
-        }
     }
 }

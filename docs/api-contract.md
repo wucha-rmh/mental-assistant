@@ -102,7 +102,7 @@ return Promise.reject(...)
 | 项 | 约定 |
 |---|---|
 | 输出格式 | **`yyyy-MM-dd HH:mm:ss`**（例：`2026-10-15 15:59:46`），不再带 `T`、不带毫秒 |
-| 影响的字段 | 所有 `LocalDateTime`：`startedAt`、`lastMessageTime`、`createdAt`、`updatedAt`、`publishedAt`、`aiAnalysisUpdatedAt` |
+| 影响的字段 | 所有 `LocalDateTime`：`startedAt`、`lastMessageTime`、`lastEmotionUpdatedAt`、`createdAt`、`updatedAt`、`publishedAt` |
 | 不受影响 | `LocalDate`（`birthday`、`diaryDate`）仍是 `yyyy-MM-dd`；数据看板趋势里的 `date` 也是 `yyyy-MM-dd` |
 | 实现 | `config/JacksonConfig.java` 注册 `LocalDateTime` 序列化器（Spring Boot 4 = Jackson 3，扩展点是 `JsonMapperBuilderCustomizer`） |
 | 前端 | 大部分地方是**直接渲染字符串**；需要二次处理时用 dayjs（`dayjs(item.updatedAt).format('YYYY-MM-DD')`），dayjs 的默认解析同时支持空格与 `T` 分隔 |
@@ -350,7 +350,7 @@ GET /api/psychological-chat/sessions/{sessionId}/messages    （需 token）
 [
   { "id": 117, "sessionId": 27, "senderType": 1, "senderTypeDesc": "用户",
     "messageType": 1, "content": "今天天气很好", "createdAt": "2026-10-14 20:34:05",
-    "emotionTag": null, "aiModel": null, "contentLength": 6 }
+    "aiModel": "openai", "contentLength": 6 }
 ]
 ```
 
@@ -607,8 +607,7 @@ GET /api/emotion-diary/admin/page                           （仅管理员）
   "id": 28, "userId": 4, "username": "ces", "nickname": "1561",
   "diaryDate": "2025-11-11", "moodScore": 6,
   "diaryContent": "今天……",
-  "aiEmotionAnalysis": "{\"primaryEmotion\":\"开心\",...}",   // JSON 字符串或 null
-  "aiAnalysisUpdatedAt": "...", "createdAt": "...", "updatedAt": "..."
+  "createdAt": "...", "updatedAt": "..."
 }
 ```
 
@@ -617,10 +616,11 @@ GET /api/emotion-diary/admin/page                           （仅管理员）
 > 日记只剩「心情评分 + 今日感想」两部分（备份见 `.db-backup/emotion_diary_before_slim_*.sql`）。
 > 历史数据里这四列的内容不再提供，接口也不再返回它们。
 
-> ⚠️ `aiEmotionAnalysis` 在 `emotional.vue:240-245` 被 `JSON.parse`（**无 try/catch**）：
-> 后端对「不以 `{` 开头 / 解析失败」的值统一返回 `null`，并保证解析结果里的
-> `improvementSuggestions` 是数组（`emotional.vue:110` 直接 `v-for`）。
-> 库里 19 行日记中只有 5 行有分析结果，其余为 `null`（这 5 行是 2025-09 的种子数据）。
+> 2026-10-15 **再精简**：`aiEmotionAnalysis`、`aiAnalysisUpdatedAt` 两个字段已随那条**从未实现、已废弃**的
+> 「日记 AI 情绪分析」链路一起从**库表、实体、DTO、后台页面**删除（`emotional.vue` 的「AI情绪分析结果」弹窗区块、
+> `getAiEmotionTagType` 等四个函数、`.ai-analysis-result` 样式同步删净），废弃的任务表 `ai_analysis_task` 也已整表 DROP。
+> 改前全库备份 `D:\mental_health_assistant\.db-backup\mental_health_assistant_full_20261015-175210.sql`。
+> 注意与 **2.2 的会话级情绪分析**（`consultation_session.last_emotion_analysis`）区分：那个仍在工作、**未删**。
 
 #### 记录心情日记（登录用户）
 
@@ -640,7 +640,7 @@ POST /api/emotion-diary                                     （需 token）
 
 - `emotion_diary` 上 `(user_id, diary_date)` 有唯一键：**同一天重复提交按覆盖更新处理**，不会产生第二条记录，返回的 `id` 不变。
 - `userId` 一律取当前登录用户，前端传什么都不看。
-- 覆盖更新**不会动已有的 `ai_emotion_analysis`**。
+- 覆盖更新**只改 `mood_score` / `diary_content`**（其余列都是自动维护的时间戳）。
 - 响应 `data` 是该条日记（前端不读它）。
 
 #### 删除心情日记（仅管理员）
@@ -760,7 +760,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 头像裁剪/多尺寸 | 上传的原图直接当头像，不生成缩略图；前端只限制了类型与 5MB 大小 |
 | 知识文章 / 情绪日记写操作 | ✅ 已于 2026-10-15 实现（见 2.3、2.4）：文章新增/编辑/上下架/删除、日记新增/删除 |
 | 情绪日记字段精简 | ✅ 已于 2026-10-15 完成（见 2.4）：日记只剩「心情评分 + 今日感想」，`dominantEmotion`/`emotionTriggers`/`sleepQuality`/`stressLevel` 四列已从库表到前端全部删除 |
-| 库表冗余（全库级） | ⬜ 2026-10-15 做了整库盘点（9 张表 108 行），列出重复索引、零引用遗留表 `ai_analysis_task`/`user_favorite`、空列/常量列、半成品列，**尚未动手清理** |
+| 库表冗余（全库级） | 🟡 2026-10-15 整库盘点后已清理一批：DROP 废弃表 `ai_analysis_task`（14 行、11 索引、代码 0 引用）、`emotion_diary.ai_emotion_analysis`/`ai_analysis_updated_at`、`consultation_message.emotion_tag` → **9 张表精简为 8 张**、外键 8 → 7。**尚未清理**：零引用遗留表 `user_favorite`（1 行）、重复索引（`emotion_diary.idx_user_diary`＝`user_date_unique`、`user.idx_username`＝`UNIQUE username`）、空列/常量列（`knowledge_category.category_code`/`parent_id`、`consultation_message.message_type`、`knowledge_article.status`、`user.status`、`sys_file_info.file_type`/`expire_time`/`is_temp`/`status`）、半成品列 `knowledge_article.read_count`（从不自增）、`consultation_message.ai_model`（写死假值 `openai`） |
 | 前端表单校验 | `ArticleDialog.vue` 的 `handleSubmit` 原先校验不通过也照发请求（已修成 `if (!valid) return`）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 
 ---
@@ -810,6 +810,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | 全站 UI 统一（温和疗愈风）：新增 `frontend/src/styles/tokens.scss`（设计令牌 + Element Plus CSS 变量映射）与 `styles/index.scss`（全局样式与组件微调），26 个页面/组件改用令牌；同时修掉侧栏高亮写死、看板 KPI 类名不匹配、分页参数用 `current`、翻页丢筛选、首页 CTA 无跳转、情绪面板数字写死、4 个 `@keyframes` 缺失、用户/AI 消息无法区分、Enter 不发送等问题（见 `CLAUDE.md` 三.9）。 |
 | 2026-10-15 | **情绪日记精简为「心情评分 + 今日感想」**：库表 `emotion_diary` 删除 `dominant_emotion`、`emotion_triggers`、`sleep_quality`、`stress_level` 四列（列数 13 → 9，迁移前 `mysqldump` 备份到 `.db-backup/emotion_diary_before_slim_20261015-172549.sql`，另存一份 CSV 到 `.tmp-schema/`）；同步删掉 `entity/EmotionDiary.java` 的四个字段、`DTO/command/EmotionDiaryCreateCommandDTO.java` 与 `DTO/response/EmotionDiaryAdminItemDTO.java` 的对应字段、`EmotionDiaryService.saveDiary`/`toDTO` 里的读写逻辑（`grep DominantEmotion\|EmotionTriggers\|SleepQuality\|StressLevel` 在 `backend/src` 已 0 命中，`mvn -B -q compile` 通过，`DataAnalyticsService` 只读 `moodScore`/`userId`/`diaryDate` 故看板不受影响）。前端 `views/emotionDiary.vue` 删掉整个「主要情绪」卡片（8 张情绪图 + `emotionOptions`/`selectEmotion`）与睡眠/压力下拉、情绪触发因素输入，表单只剩「心情评分」+「今日感想」；`views/emotional.vue` 删掉「生活指标」列、「情绪触发因素」列与详情弹窗的对应四项。实测：新增（`id=34`）→ 200 且响应体只含三个字段、我的记录与后台分页都能查到、`moodScore=42` 仍被拦（`心情评分范围是 1-10`）、看板 overview 200、库列数 9；测试记录已删除，库回到 19 行。 |
 | 2026-10-15 | **咨询页精简：删掉「AI 助手信息框」与「情绪花园」**：`frontend/src/views/consultation.vue` 左栏只剩「会话列表」（`.session-history` 改为 `flex:1` + 最小高度 0，`.session-list` 自己滚动），右侧对话区不变（`.chat-header` 保留）；随之删除 `defaultEmotion`/`currentEmotion`/`resetEmotion`/`loadSessionEmotion`/`getIntensityClass`/`getRiskText` 与 `fetchEventSource` 的 `onclose` 收尾调用，前端**不再请求** `GET /api/psychological-chat/session/{sessionId}/emotion`（接口、缓存、落库逻辑与 `api/frontend.js#getSessionEmotion` 全部保留，见 2.2 说明；`riskLevel`/`riskDescription` 因此暂时没有界面出口）。 |
+| 2026-10-15 | **删除已废弃的「日记 AI 分析」链路**：整表 DROP `ai_analysis_task`（14 行、11 索引、代码 0 引用）；`emotion_diary` 删 `ai_emotion_analysis`/`ai_analysis_updated_at`（列数 9 → 7，`idx_ai_analysis_time` 随列消失）；`consultation_message` 删 `emotion_tag`（列数 8 → 7，全 NULL、从未写入）。库 **9 → 8 张表**、外键 8 → 7。后端 7 处（`entity/EmotionDiary`、`DTO/response/EmotionDiaryAdminItemDTO`、`EmotionDiaryService` 含整个 `normalizeAiAnalysis`、`entity/ConsultationMessage`、`ConsultationMessageResponseDTO`、`ConsultationMessageService.saveUserMessage` 签名、`PsychologicalSupportService` 两处调用）与前端 `views/emotional.vue` 6 处（「AI情绪分析结果」弹窗区块、四个 `getAi*/getRisk*` 函数、`.ai-analysis-result` 样式）同步删净；`grep aiEmotionAnalysis\|emotionTag\|normalizeAiAnalysis` 在 `backend/src` 只剩一句 javadoc 说明，`mvn -B -q compile` 通过，Vite 产物无残留标识符。**保留**：`consultation_session.last_emotion_analysis`/`last_emotion_updated_at` 与会话情绪分析整套（见 2.2）。10 项端到端实测全过：登录、会话列表、消息列表（响应已无 `emotionTag`）、会话情绪分析仍可用（`低落`/`riskLevel=1`）、后台与用户端日记分页（响应已无 ai 字段）、新增+删除日记（库回 19 行）、看板 overview、库结构核对（表 8、各表行数不变、查已删表报 `1146`、查已删列报 `1054`）。改前全库备份 `.db-backup/mental_health_assistant_full_20261015-175210.sql`。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。
 

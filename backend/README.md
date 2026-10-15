@@ -198,13 +198,13 @@ CREATE TABLE consultation_message (
     sender_type  TINYINT     NOT NULL COMMENT '发送者类型 1:用户 2:AI助手',
     message_type TINYINT     NOT NULL COMMENT '消息类型 1:文本',
     content      TEXT        NOT NULL COMMENT '消息内容',
-    emotion_tag  VARCHAR(50)          COMMENT '情绪标签',
     ai_model     VARCHAR(50)          COMMENT '使用的AI模型',
     created_at   DATETIME             COMMENT '创建时间'
 ) COMMENT '咨询消息表';
 ```
 
 > `user` 表字段参见 `entity/User.java`。
+> 2026-10-15：`consultation_message.emotion_tag` 列已删除（从未写入过，全 NULL）。
 
 ## 🗺 后续计划
 

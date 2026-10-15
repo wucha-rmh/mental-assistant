@@ -43,14 +43,6 @@ public class EmotionDiary {
     @TableField("diary_content")
     private String diaryContent;
 
-    // AI 情绪分析结果（JSON 字符串，结构与 SessionEmotionDTO 一致）
-    @TableField("ai_emotion_analysis")
-    private String aiEmotionAnalysis;
-
-    // AI 分析更新时间
-    @TableField("ai_analysis_updated_at")
-    private LocalDateTime aiAnalysisUpdatedAt;
-
     // 创建时间
     @TableField("created_at")
     private LocalDateTime createdAt;

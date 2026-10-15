@@ -82,7 +82,7 @@ public class PsychologicalSupportService {
         }
 
         // 将初始用户消息保存到消息表
-        consultationMessageService.saveUserMessage(session.getId(), createDTO.getInitialMessage(), null);
+        consultationMessageService.saveUserMessage(session.getId(), createDTO.getInitialMessage());
 
         long now = System.currentTimeMillis();
         return new StructOutPut.StreamChatSession(
@@ -125,7 +125,7 @@ public class PsychologicalSupportService {
 
         // 幂等保护：会话的首条消息已在 startSession 时保存，避免重复落库
         if (!isInitialMessage(dbSessionId, userMessage)) {
-            consultationMessageService.saveUserMessage(dbSessionId, userMessage, null);
+            consultationMessageService.saveUserMessage(dbSessionId, userMessage);
         }
 
         String conversationId = CONVERSATION_ID_PREFIX + sessionIdString;

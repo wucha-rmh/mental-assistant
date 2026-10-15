@@ -1,6 +1,6 @@
 <template>
     <div>
-        <PageHead title="情绪日志" description="查看用户的情绪日记与 AI 情绪分析结果" />
+        <PageHead title="情绪日志" description="查看用户的情绪日记" />
         <el-card class="mh-card--flush">
             <TableSearch :formItem="formItem" @search="handleSearch" />
             <el-table
@@ -77,45 +77,6 @@
                     </el-descriptions>
                 </div>
                 <div class="detail-section">
-                    <h4>AI情绪分析结果</h4>
-                    <div class="ai-analysis-result">
-                        <el-descriptions :column="2" border>
-                            <el-descriptions-item label="主要情绪">
-                                <el-tag :type="getAiEmotionTagType(aiData.primaryEmotion)">{{
-                                    aiData.primaryEmotion}}</el-tag>
-                            </el-descriptions-item>
-                            <el-descriptions-item label="情绪强度">
-                                <el-progress :percentage="aiData.emotionScore"
-                                    :color="getEmotionScoreColor(aiData.emotionScore)" :stroke-width="8" />
-                            </el-descriptions-item>
-                            <el-descriptions-item label="风险等级">
-                                <el-tag :type="getRiskLevelTagType(aiData.riskLevel)">
-                                    {{ getRiskLevelText(aiData.riskLevel) }}
-                                </el-tag>
-                            </el-descriptions-item>
-                            <el-descriptions-item label="情绪性质">
-                                <el-tag :type="aiData.isNegative ? 'danger' : 'success'">{{ aiData.isNegative ? '负面情绪' :
-                                    '正面情绪'}}</el-tag>
-                            </el-descriptions-item>
-                        </el-descriptions>
-                        <div class="ai-suggestion-section">
-                            <h5>专业建议</h5>
-                            <div class="suggestion-content">{{ aiData.suggestion || '无' }}</div>
-                        </div>
-                        <div class="ai-risk-section">
-                            <h5>风险描述</h5>
-                            <div class="risk-content">{{ aiData.riskDescription || '无' }}</div>
-                        </div>
-                        <div class="ai-improvements-section">
-                            <h5>改善建议</h5>
-                            <ul class="improvement-list">
-                                <li v-for="item in aiData.improvementSuggestions" :key="item">{{ item }}</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="detail-section">
                     <h4>时间信息</h4>
                     <el-descriptions :column="2" border>
                         <el-descriptions-item label="创建时间">{{ currentDetail.createdAt }}</el-descriptions-item>
@@ -135,49 +96,6 @@ import PageHead from '@/components/PageHead.vue'
 import TableSearch from '@/components/TableSearch.vue'
 import { getEmotionalPage, deleteEmotional } from '@/api/admin'
 import { ElMessageBox } from 'element-plus'
-
-const getAiEmotionTagType = (emotion) => {
-    const emotionTagMap = {
-        '快乐': 'success',
-        '平静': 'success',
-        '兴奋': 'warning',
-        '满足': 'success',
-        '愤怒': 'danger',
-        '悲伤': 'info',
-        '焦虑': 'warning',
-        '恐惧': 'danger',
-        '沮丧': 'info',
-        '压力': 'warning'
-    }
-    return emotionTagMap[emotion] || 'info'
-}
-
-const getEmotionScoreColor = (score) => {
-    if (score >= 80) return '#f56c6c'
-    if (score >= 60) return '#e6a23c'
-    if (score >= 40) return '#909399'
-    return '#67c23a'
-}
-
-const getRiskLevelTagType = (riskLevel) => {
-    const riskTagMap = {
-        0: 'success',
-        1: 'info',
-        2: 'warning',
-        3: 'danger'
-    }
-    return riskTagMap[riskLevel] || 'info'
-}
-
-const getRiskLevelText = (riskLevel) => {
-    const riskTextMap = {
-        0: '正常',
-        1: '关注',
-        2: '预警',
-        3: '危机'
-    }
-    return riskTextMap[riskLevel] || '未知风险等级'
-}
 
 const formItem = [
     { comp: 'input', prop: 'userId', label: '用户ID', placeholder: '请输入用户ID' },
@@ -245,19 +163,8 @@ const handleSearch = async (formData) => {
 // 详情
 const detailDialogVisible = ref(false)
 const currentDetail = ref(null)
-const aiData = ref(null)
 const viewSessionDetail = (row) => {
     currentDetail.value = row
-    if (row.aiEmotionAnalysis) {
-        try {
-            aiData.value = JSON.parse(row.aiEmotionAnalysis)
-        } catch (error) {
-            // 后端约定 aiEmotionAnalysis 是合法 JSON 字符串或 null，这里兜底避免脏数据把弹窗打断
-            aiData.value = {}
-        }
-    } else {
-        aiData.value = {}
-    }
     detailDialogVisible.value = true
 }
 
@@ -281,7 +188,7 @@ onMounted(() => {
 
 </script>
 <style lang="scss" scoped>
-/* 表格里的用户单元格与生活指标 */
+/* 表格里的用户单元格 */
 .user-cell {
     display: flex;
     align-items: center;
@@ -300,53 +207,6 @@ onMounted(() => {
             margin: 0 0 var(--mh-space-3) 0;
             color: var(--mh-text-1);
             font-size: var(--mh-font-4);
-        }
-    }
-}
-
-.ai-analysis-result {
-
-    .ai-keywords-section,
-    .ai-suggestion-section,
-    .ai-risk-section,
-    .ai-improvements-section {
-        margin-top: var(--mh-space-4);
-        padding: var(--mh-space-3) var(--mh-space-4);
-        background-color: var(--mh-surface-soft);
-        border-radius: var(--mh-radius-sm);
-
-        h5 {
-            margin: 0 0 var(--mh-space-2) 0;
-            color: var(--mh-text-2);
-            font-size: var(--mh-font-3);
-            font-weight: 600;
-        }
-    }
-
-    .suggestion-content,
-    .risk-content {
-        line-height: var(--mh-line);
-        color: var(--mh-text-2);
-        background-color: var(--mh-surface);
-        padding: var(--mh-space-3);
-        border-radius: var(--mh-radius-sm);
-        border: 1px solid var(--mh-border);
-    }
-
-    .improvement-list {
-        margin: 0;
-        padding-left: var(--mh-space-5);
-
-        li {
-            margin-bottom: 4px;
-            color: var(--mh-text-2);
-            line-height: 1.6;
-        }
-    }
-
-    .el-progress {
-        .el-progress__text {
-            font-size: var(--mh-font-1) !important;
         }
     }
 }

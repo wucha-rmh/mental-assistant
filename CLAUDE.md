@@ -340,7 +340,7 @@ taskkill //F //PID <pid>
 | 前端表单校验 | 已修 `ArticleDialog.vue`（校验不通过不再发请求）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 | 文章写操作与日记写操作 | ✅ 已于 2026-10-15 实现（见 `docs/api-contract.md` 2.3 / 2.4） |
 | 情绪日记字段 | ✅ 已于 2026-10-15 精简为「心情评分 + 今日感想」：`emotion_diary` 删掉 `dominant_emotion`/`emotion_triggers`/`sleep_quality`/`stress_level` 四列（13 → 9 列），实体/DTO/服务/前台表单与后台页同步删净。**新增日记请求体只有 `diaryDate`+`moodScore`+`diaryContent`**；迁移前备份在 `.db-backup/emotion_diary_before_slim_*.sql` |
-| 库表冗余（全库级） | ⬜ 2026-10-15 做了整库盘点（9 张表 108 行）：重复索引（`emotion_diary.idx_user_diary`＝`user_date_unique`、`user.idx_username`＝`UNIQUE username`）、零引用遗留表 `ai_analysis_task`/`user_favorite`（代码 0 引用）、空列/常量列（`knowledge_category.category_code`/`parent_id`、`consultation_message.emotion_tag`/`message_type`、`knowledge_article.status`、`user.status`、`sys_file_info.file_type`）、半成品列（`knowledge_article.read_count` 从不自增、`emotion_diary.ai_*` 只有 5 行有值）。清理范围待定 |
+| 库表冗余（全库级） | 🟡 2026-10-15 已清理一批：DROP 废弃表 `ai_analysis_task`（14 行、11 索引、代码 0 引用）、`emotion_diary.ai_emotion_analysis`/`ai_analysis_updated_at`、`consultation_message.emotion_tag` → **9 张表精简为 8 张**。**尚未清理**：零引用遗留表 `user_favorite`、重复索引（`emotion_diary.idx_user_diary`＝`user_date_unique`、`user.idx_username`＝`UNIQUE username`）、空列/常量列（`knowledge_category.category_code`/`parent_id`、`consultation_message.message_type`、`knowledge_article.status`、`user.status`、`sys_file_info.file_type`/`expire_time`/`is_temp`/`status`）、半成品列 `knowledge_article.read_count` 从不自增、`consultation_message.ai_model` 写死假值 `openai` |
 | git 仓库 | ✅ 2026-10-15 起**只有一个仓库**（工作区根），`backend/` 已用 subtree 方式并入（后端原有提交历史保留），受跟踪文件 136 个；根仓库**无 remote**（未 push），旧后端 GitHub 仓库保留作归档。详见踩坑 11 |
 
 ---

@@ -10,9 +10,6 @@ import java.time.LocalDateTime;
 
 /**
  * 情绪日记（管理后台列表/详情）
- *
- * <p>前端约定：{@code aiEmotionAnalysis} 必须是**合法的 JSON 字符串或 null**，
- * 因为前端直接 {@code JSON.parse} 且没有 try/catch。
  */
 @Data
 @Builder
@@ -33,10 +30,6 @@ public class EmotionDiaryAdminItemDTO {
     private Integer moodScore;
     // 日记正文（今日感想）
     private String diaryContent;
-    // AI 情绪分析（JSON 字符串，非法数据会被置为 null 以免前端解析崩溃）
-    private String aiEmotionAnalysis;
-    // AI 分析更新时间
-    private LocalDateTime aiAnalysisUpdatedAt;
     // 创建时间
     private LocalDateTime createdAt;
     // 更新时间

@@ -39,11 +39,6 @@ public class ConsultationMessage {
     @NotBlank(message = "消息内容不能为空")
     private String content;
 
-    // 情绪标签
-    @Size(max = 50, message = "情绪标签长度不能超过50个字符")
-    @TableField("emotion_tag")
-    private String emotionTag;
-
     // 使用的AI模型
     @Size(max = 50, message = "AI模型名称长度不能超过50个字符")
     @TableField("ai_model")

@@ -32,9 +32,6 @@ public class ConsultationMessageResponseDTO {
     // 消息内容
     private String content;
 
-    // 情绪标签
-    private String emotionTag;
-
     // 使用的AI模型
     private String aiModel;
 

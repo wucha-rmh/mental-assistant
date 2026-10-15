@@ -6,7 +6,7 @@
                 <div class="breathing-circle">
                     <el-image :src="iconUrl" style="width: 25px;height:25px" alt="AI助手" />
                 </div>
-                <h3 class="assistant-name">宁渡AI助手</h3>
+                <h3 class="assistant-name">心理健康AI助手</h3>
                 <div class="online-status">
                     <div class="status-dot"></div>
                     在线服务中
@@ -110,7 +110,7 @@
                         <el-image :src="iconUrl1" style="width: 30px;height: 30px" />
                     </div>
                     <div class="chat-info">
-                        <h2>宁渡AI助手</h2>
+                        <h2>心理健康AI助手</h2>
                         <p>您的贴心AI心理健康助手</p>
                     </div>
                 </div>
@@ -189,7 +189,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { startSession, getSessionList, deleteSession, getSessionDetail, getSessionEmotion } from '@/api/frontend'
-import { ElMessage } from 'element-plus'
+import { dayjs, ElMessage } from 'element-plus'
 import { ChatRound, DeleteFilled } from '@element-plus/icons-vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
@@ -297,7 +297,7 @@ const sendMessage = () => {
             id: Date.now(),
             senderType: 1,
             content: message,
-            createdAt: new Date().toISOString()
+            createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss')
         })
         startAIResponse(currentSession.value.sessionId, message)
     }
@@ -309,7 +309,7 @@ const startNewSession = (message) => {
         initialMessage: message
     }
     if (currentSession.value.sessionTitle === '新对话') {
-        sessionParams.sessionTitle = `宁渡AI助手 - ${new Date().toLocaleString()}`
+        sessionParams.sessionTitle = `心理健康AI助手 - ${new Date().toLocaleString()}`
     } else {
         // 如果历史会话记录
         sessionParams.sessionTitle = currentSession.value.sessionTitle
@@ -339,7 +339,7 @@ const startNewSession = (message) => {
         id: Date.now(),
         senderType: 1,
         content: message,
-        createdAt: new Date().toISOString()
+        createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss')
        })
 
        // 开始流式对话
@@ -363,7 +363,7 @@ const startAIResponse = (sessionId, userMessage) => {
         id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         senderType: 2,
         content: '',
-        createdAt: new Date().toISOString()
+        createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss')
     }
     messages.value.push(aiMessage)
 

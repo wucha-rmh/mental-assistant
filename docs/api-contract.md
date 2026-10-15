@@ -97,6 +97,18 @@ return Promise.reject(...)
 
 **后端接口必须两种都能解析**（见 `ConsultationSessionService.parseSessionId`）。
 
+### 5. 日期时间格式
+
+| 项 | 约定 |
+|---|---|
+| 输出格式 | **`yyyy-MM-dd HH:mm:ss`**（例：`2026-10-15 15:59:46`），不再带 `T`、不带毫秒 |
+| 影响的字段 | 所有 `LocalDateTime`：`startedAt`、`lastMessageTime`、`createdAt`、`updatedAt`、`publishedAt`、`aiAnalysisUpdatedAt` |
+| 不受影响 | `LocalDate`（`birthday`、`diaryDate`）仍是 `yyyy-MM-dd`；数据看板趋势里的 `date` 也是 `yyyy-MM-dd` |
+| 实现 | `config/JacksonConfig.java` 注册 `LocalDateTime` 序列化器（Spring Boot 4 = Jackson 3，扩展点是 `JsonMapperBuilderCustomizer`） |
+| 前端 | 大部分地方是**直接渲染字符串**；需要二次处理时用 dayjs（`dayjs(item.updatedAt).format('YYYY-MM-DD')`），dayjs 的默认解析同时支持空格与 `T` 分隔 |
+
+> ⚠️ `spring.jackson.date-format` 对上面这些字段**无效**（它只管 `java.util.Date`），必须像现在这样显式换序列化器。
+
 ---
 
 ## 二、接口清单
@@ -197,7 +209,7 @@ Content-Type: multipart/form-data
     "avatar": "/files/bussiness/user_avatar/1792047515898-493035e7.jpg",
     "userType": 1,
     "displayName": "tester",
-    "updatedAt": "2026-10-15T14:58:35.9180266"
+    "updatedAt": "2026-10-15 14:58:35"
   },
   "msg": "操作成功"
 }
@@ -222,7 +234,7 @@ POST /api/psychological-chat/session/start     （需 token）
 请求体：
 ```json
 {
-  "sessionTitle": "宁渡AI助手 - 10-15 14:30",   // 驼峰，大小写敏感；最长 200 字符
+  "sessionTitle": "心理健康AI助手 - 10-15 14:30",   // 驼峰，大小写敏感；最长 200 字符
   "initialMessage": "我最近压力很大"             // 必填，最长 2000 字符
 }
 ```
@@ -314,12 +326,12 @@ GET /api/psychological-chat/sessions           （需 token）
 ```json
 {
   "id": 27,                          // 裸 id
-  "sessionTitle": "宁渡AI助手 - 10-14",
-  "startedAt": "2026-10-14T20:34:05",
+  "sessionTitle": "心理健康AI助手 - 10-14",
+  "startedAt": "2026-10-14 20:34:05",
   "lastMessageContent": "今天天气很好",  // 列表预览
   "messageCount": 12,
   "durationMinutes": 15,             // startedAt → 最后一条消息时间
-  "lastMessageTime": "2026-10-14T20:49:05",
+  "lastMessageTime": "2026-10-14 20:49:05",
   "userNickname": "系统管理员"         // 仅管理员查询时有值
 }
 ```
@@ -336,7 +348,7 @@ GET /api/psychological-chat/sessions/{sessionId}/messages    （需 token）
 ```json
 [
   { "id": 117, "sessionId": 27, "senderType": 1, "senderTypeDesc": "用户",
-    "messageType": 1, "content": "今天天气很好", "createdAt": "2026-10-14T20:34:05",
+    "messageType": 1, "content": "今天天气很好", "createdAt": "2026-10-14 20:34:05",
     "emotionTag": null, "aiModel": null, "contentLength": 6 }
 ]
 ```
@@ -465,9 +477,9 @@ GET /api/knowledge/article/page                             （需 token）
   "authorName": "系统管理员",
   "readCount": 35,
   "status": 1,                                      // 数字
-  "publishedAt": "2025-09-07T10:00:00",
+  "publishedAt": "2025-09-07 10:00:00",
   "createdAt": "...",
-  "updatedAt": "2025-11-10T19:07:53"
+  "updatedAt": "2025-11-10 19:07:53"
 }
 ```
 
@@ -651,9 +663,22 @@ GET /api/data-analytics/overview                             （仅管理员）
   - 生产环境：由后端或反向代理提供 `/files/**`。
 - 兜底图与默认头像也换成了项目内资源：`frontend/public/img/cover-placeholder.svg`、`frontend/public/img/default-avatar.svg`。
 
-> ⚠️ 库里 `knowledge_article.cover_image` 目前 7 行**全是空串**，所以列表页一律显示兜底图；
-> `user.avatar` 里存的 `/files/bussiness/user_avatar/...` 是历史路径，对应文件在旧服务器上根本取不到
-> （那个服务器对这些路径返回的是它自己的错误 JSON），需要重新上传才有图。
+**临时文件清理（第⑤步，2026-10-15 起）**
+
+`businessType` 不是 `ARTICLE` / `USER_AVATAR` 的上传一律按**临时文件**处理（`is_temp=1`、`status=0`、`expire_time = 上传时间 + 24h`，落 `uploads/temp/`），由 `task/TempFileCleanupTask.java` 定时清理：
+
+| 项 | 值 |
+|---|---|
+| 触发 | `@Scheduled(cron = "${file.temp-cleanup-cron:0 30 3 * * ?}")`，默认**每天 03:30**；开关与周期改 `application.yaml` 的 `file.temp-cleanup-cron` 即可，`config/SchedulingConfig.java` 负责 `@EnableScheduling` |
+| 条件 | `sys_file_info` 里 `is_temp = 1 AND expire_time < now()` |
+| 动作 | 逐个 `FileStorageService.deleteStoredFile(file_path)`（删磁盘文件 + 删 `sys_file_info` 行），再按 id 兜底删一次；单条失败只 `log.warn` 不中断 |
+| 日志 | 有删除时打 `临时文件清理完成：删除 N 个过期文件` |
+| 实测 | 2026-10-15 用 `SPRING_APPLICATION_JSON` 把 cron 临时改成 `0/10 * * * * ?` 启动，1 个过期临时文件被删、库与磁盘均无残留（该实例仅用于验证，验证后已重启回正常配置） |
+
+> `ARTICLE` / `USER_AVATAR` 的文件**不设过期**（`is_temp=0`），不会被清理任务碰到；换头像时由 `UserService.updateAvatar` 主动删旧文件。
+
+> ⚠️ 历史遗留说明已过时：第②步已于 2026-10-15 给 7 篇文章补齐封面（`knowledge_article.cover_image` 全部指向 `/files/bussiness/article/...`）。
+> `user.avatar` 目前只有 `admin` / `tester` 有（联调时上传的本地文件），其余用户显示默认头像。
 
 ---
 
@@ -680,7 +705,9 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 对话记忆持久化 | ✅ 已于 2026-10-15 解决「重启失忆」（见 2.2 对话记忆）：重启后按需从 `consultation_message` 回灌最近 30 条；仍未做的是**持久化记忆仓库**（Spring AI 2.1.0-M1 没有 JDBC 版 `ChatMemoryRepository`），所以删掉的会话仍会短暂留在进程内存里 |
 | 修改会话标题 | 前端没有这个调用，故未实现 |
 | 文件上传 | ✅ 已于 2026-10-15 实现为**本地存储**（见 2.6）：落盘到 `backend/uploads/`，`/files/**` 由后端直接提供，不再指向 `http://159.75.169.224:1235` |
-| 历史图片缺失 | `knowledge_article.cover_image` 全为空串、`user.avatar` 已清空为 `null`（旧的失效路径已于 2026-10-15 清库），页面显示兜底图/默认头像，重新上传后才有图 |
+| 历史图片缺失 | ✅ 已于 2026-10-15 补齐：7 篇文章的 `cover_image` 全部指向本地 `/files/bussiness/article/...`（见 2.6）；`user.avatar` 目前只有 `admin` / `tester` 有图，其余用户显示默认头像 |
+| 临时文件清理 | ✅ 已于 2026-10-15 实现（见 2.6）：`@Scheduled` 每天 03:30 清理 `is_temp=1` 且已过 `expire_time` 的文件，删磁盘 + 删 `sys_file_info` |
+| 日期时间格式 | ✅ 已于 2026-10-15 统一（见 一.5）：`LocalDateTime` 输出 `yyyy-MM-dd HH:mm:ss`（`config/JacksonConfig.java` 注册 Jackson 3 序列化器） |
 | 头像裁剪/多尺寸 | 上传的原图直接当头像，不生成缩略图；前端只限制了类型与 5MB 大小 |
 | 知识文章 / 情绪日记写操作 | ✅ 已于 2026-10-15 实现（见 2.3、2.4）：文章新增/编辑/上下架/删除、日记新增/删除 |
 | 前端表单校验 | `ArticleDialog.vue` 的 `handleSubmit` 原先校验不通过也照发请求（已修成 `if (!valid) return`）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
@@ -724,5 +751,6 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **用户头像与本地上传**：落盘逻辑抽到 `FileStorageService`（`FileController` 与头像接口共用）；新增 `POST /api/user/avatar`（见 2.1）→ `UserService.updateAvatar`，换头像时清理上一个头像文件；前端新增 `stores/user.js`（pinia，响应式用户信息）、`components/AvatarUploader.vue`（无 DOM 的通用上传器）、`api/frontend.js#uploadAvatar`；`Navbar.vue` 与 `FrontendLayout.vue` 改为显示**真实用户名 + 头像**（未上传则本地默认图），下拉菜单加「更换头像」；`login.vue` 登录后同步写 store。库里的旧失效头像路径与 `sys_file_info` 旧记录已清空。 |
 | 2026-10-15 | **情绪分析接入 AI（第②步）**：新增 `AiService/EmotionAnalysisService.java`（注入 `OpenAiChatModel` 自建**不带记忆 advisor** 的 `ChatClient`，取最近 20 条消息、每条截断 500 字符做结构化评估）与 `PromptManage.EMOTION_ANALYSIS_SYSTEM_PROMPT`（只输出严格 JSON，含 riskLevel 0-3 判定标准）；`ConsultationSessionService` 增 `saveEmotionAnalysis`（显式 set `last_emotion_analysis`/`last_emotion_updated_at`）；`PsychologicalChat` 的 `GET /session/{sessionId}/emotion` 改为 `emotionAnalysisService.analyzeOrGet(...)`——缓存覆盖最后一条消息则直接复用（实测 9ms），有新消息则重算（实测 6-7s）并落库；模型输出经 `extractJson`（去 ``` 围栏）+ 逐字段夹紧校验（score 0-100、riskLevel 0-3、`improvementSuggestions` 保证为数组且最多 5 条）；无消息/非法 JSON/调用异常一律退化为 `SessionEmotionDTO.defaultValue()` 且**不写缓存**（下次重试）。9 项端到端实测全部通过（首次分析、缓存命中不重复调 AI、新消息后重算、越权/不存在会话、无 token 401）。 |
 | 2026-10-15 | **AI 对话记忆回灌（第④步）**：`PsychologicalSupportService` 新增 `@Slf4j` 与 `@Autowired ChatMemory chatMemory`（与 advisor 共用同一个 `MessageWindowChatMemory`），`streamPsychologicalChat` 在组装模型流前调用新的私有方法 `ensureMemoryLoaded(dbSessionId, conversationId, currentUserMessage)`——进程内已有记忆则跳过；否则取该会话最近 `MEMORY_WINDOW_MESSAGES`(30) 条历史，剔除「已落库的本次用户消息」、丢弃可能出现在首条的 AI 回复，再用 `AssistantMessage`/`UserMessage` 写回窗口（`SENDER_TYPE_AI=2`），失败只 `log.warn`。实测：重启前告知「小北/豆豆/攀岩」，重启后追问仍全部答对（3.1s），日志 `回灌对话记忆 sessionId=37 ... messages=6`。测试会话已删除。 |
+| 2026-10-15 | **收尾（第⑤步）**：① **日期时间统一**为 `yyyy-MM-dd HH:mm:ss`——新增 `config/JacksonConfig.java`（Spring Boot 4 用 Jackson 3，扩展点是 `org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer`，注册 `SimpleModule` + `LocalDateTimeSerializer`；`spring.jackson.date-format` 对 `LocalDateTime` 无效），前端 `consultation.vue` 的乐观消息时间改用 `dayjs().format('YYYY-MM-DD HH:mm:ss')`（见 一.5）。② **临时文件清理任务**——新增 `config/SchedulingConfig.java`(`@EnableScheduling`) 与 `task/TempFileCleanupTask.java`（`file.temp-cleanup-cron`，默认每天 03:30；实测删除过期临时文件后库与磁盘均无残留，见 2.6）。③ **工作区根 git 仓库**——新增根 `.gitignore`（`backend/` 保持独立仓库，忽略 `node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/` 等）+ `git init -b main`，首次提交 61 个文件（`frontend/`、`docs/`、`CLAUDE.md`、`README.md`）。④ 删除前端死文件 `frontend/README.md`、`frontend/index.md`（0 字节）、`frontend/src/assets/vue.svg`（均无引用）。⑤ 品牌名统一为「心理健康AI助手」（`consultation.vue` 里残留的「宁渡AI助手」已改掉）。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。

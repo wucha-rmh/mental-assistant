@@ -49,6 +49,19 @@ npm run dev                 # 启动，服务在 5173
 > ⚠️ `node_modules` 未纳入迁移（240M），首次需要 `npm install`。
 > ⚠️ 改了 `vite.config.js`（如代理配置）后，Vite 7 会**自动重启 dev server**（实测日志：`vite.config.js changed, restarting server...`）；只有没看到这行时才需要手动重启。
 
+### 仓库（两个，别搞混）
+
+```bash
+# 工作区根仓库：frontend/、docs/、CLAUDE.md、README.md（backend/ 被 .gitignore 整个忽略）
+git add -A && git commit -m "..."        # 在 D:\mental_health_assistant 下执行
+
+# 后端仓库：仓库根就在 backend/ 里
+cd backend && git add -A && git commit -m "..."
+```
+
+根 `.gitignore` 会忽略 `node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/`、`.tmp*`、`.idea/`；
+后端仓库的 `application-local.yaml`（含 API Key）也已被忽略。详见踩坑 11。
+
 ---
 
 ## 三、关键约定（必须遵守）
@@ -102,6 +115,20 @@ npm run dev                 # 启动，服务在 5173
   ⚠️ **改 `maxMessages` 时要同步改它**，两者不一致会导致回灌出来的上下文长度与窗口不符。
 - 重启后靠 `ensureMemoryLoaded(...)` 从 `consultation_message` 回灌；`conversationId` 的格式是 `conversation_` + `session_<id>`，必须与 advisor 传的 `ChatMemory.CONVERSATION_ID` 完全一致。
 
+### 7. 日期时间格式
+
+- 后端所有 `LocalDateTime` **统一输出 `yyyy-MM-dd HH:mm:ss`**（`config/JacksonConfig.java`，见踩坑 10）。
+  改格式要动这个类，**别用 `spring.jackson.date-format`**（对 `LocalDateTime` 无效）。
+- 前端**直接渲染**这些字符串即可；需要二次格式化用 `dayjs`（`import { dayjs } from 'element-plus'`）。
+- 前端**自己造时间**（乐观渲染、新建会话标题等）也必须用同一格式：`dayjs().format('YYYY-MM-DD HH:mm:ss')`，
+  不要再写 `new Date().toISOString()`（会得到 `2026-10-15T16:12:34.567Z`，与后端格式不一致）。
+- `LocalDate`（`birthday`、`diaryDate`、看板 `date`）仍是 `yyyy-MM-dd`。
+
+### 8. 品牌名统一为「心理健康AI助手」
+
+页面、浏览器标题、会话默认标题都用 **心理健康AI助手**。发现残留的旧名「宁渡AI助手」按 bug 处理直接改掉
+（2026-10-15 已在 `consultation.vue` 全部替换）。
+
 ---
 
 ## 四、踩坑记录（都是本机真实遇到过的）
@@ -128,7 +155,7 @@ AI 编辑工具（write/edit）走宿主进程，不受此限制。
 - `backend` 原先缺少 `WRITE_OWNER`（其 DACL 里连当前用户都不显式出现），导致 `icacls /setintegritylevel` 报 `Access is denied.`；已补 `icacls backend /grant "<用户>:(OI)(CI)F"` 后成功，并递归 `/T` 打到整棵树。
 - `frontend` 有同样的问题，而且更隐蔽：一开始只给 `frontend` 自身打了标签，子目录（`public/`、`src/`、`node_modules/`、`dist/`）**没继承到**——ACE 继承只在对象创建时生效，对已存在的子目录无效。2026-10-15 补做：`icacls frontend /grant "<用户>:(OI)(CI)F" /T /C` + `icacls frontend /setintegritylevel '(OI)(CI)L' /T /C`（19972 个对象，0 失败）。
 - ⚠️ `icacls ... /T` **不带 `/C` 时会在第一个打不开的子目录处整体中止**（本次撞上 `.vscode`），并只报「Successfully processed 2 files」——看着成功、其实只动了两项。递归时必须加 `/C`，事后用 `icacls <dir>` 看每个子目录有没有 `Mandatory Label\Low` 来验证，别只看退出码。
-- `backend` 的远程指向是 `mental-health-assistant`（仓库根在 `backend/`，工作区根没有 `.git`）。
+- `backend` 的远程指向是 `mental-health-assistant`（仓库根在 `backend/` 里）；工作区根 2026-10-15 也建了自己的仓库（见踩坑 11）。
 - ⚠️ Low 标签会**常驻**（DSH 设计如此，会话结束也不撤），同用户下任何 Low 完整性进程都能写这两个目录 —— 这是写隔离的代价，知悉即可。
 
 
@@ -205,6 +232,28 @@ ERROR ... Unable to handle the Spring Security Exception because the response is
 客户端**已收完整流**（实测收到全部 60 个 chunk + `event: done`），所以这不是故障，只是噪声；
 真要消除得给 ASYNC dispatch 放行（`shouldFilterAllDispatcherTypes(false)` 或对 `/stream` 单独放行）。
 
+### 10. 🔴 日期格式：Spring Boot 4 用的是 **Jackson 3**，`spring.jackson.date-format` 对 `LocalDateTime` 无效
+
+- 本项目 `LocalDateTime` 序列化统一为 `yyyy-MM-dd HH:mm:ss`，实现是 `config/JacksonConfig.java`。
+- **包名是 `tools.jackson.*`，不是 `com.fasterxml.jackson.*`**：`spring-boot-autoconfigure-4.0.8.jar` 里
+  **一个 jackson 类都没有**（已挪到 `spring-boot-jackson-4.0.8.jar`）。自定义扩展点是
+  `org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer`（`customize(tools.jackson.databind.json.JsonMapper.Builder)`），
+  **不是** Jackson 2 时代的 `Jackson2ObjectMapperBuilderCustomizer`；写成 Jackson 2 会直接编译失败
+  （`程序包 com.fasterxml.jackson.datatype.jsr310.ser 不存在`）。
+- 可用写法：`tools.jackson.databind.module.SimpleModule` + `tools.jackson.databind.ext.javatime.ser.LocalDateTimeSerializer(DateTimeFormatter)`，再 `builder.addModule(...)`。
+- 在 `application.yaml` 里配 `spring.jackson.date-format` **不会**改变这些字段（该属性只管 `java.util.Date`）——别以为配了没用是缓存问题。
+- 前端拿到的就是 `2026-10-15 15:59:46` 这种字符串；需要二次处理时用 dayjs（它的默认解析同时接受空格与 `T` 分隔，老数据不会解析失败）。
+
+### 11. 🟡 有两个 git 仓库：工作区根 + `backend/`
+
+- **工作区根仓库**（2026-10-15 新建，`git init -b main`，首次提交 `f18a39a`）只管
+  `frontend/`、`docs/`、`CLAUDE.md`、`README.md`、根 `.gitignore` —— 根 `.gitignore` **整个忽略 `backend/`**。
+- **`backend/` 有自己的仓库**（remote `mental-health-assistant`，仓库根就在 `backend/` 里），
+  后端改动要在 `backend/` 目录里单独 `git add` / `commit`。
+- ⚠️ 在**工作区根**执行 `git status` 看不到后端改动，别以为后端没改；两个仓库都还没有 remote push 配置（根仓库完全没有 remote）。
+- 根 `.gitignore` 忽略了 `node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/`、`.tmp*`、`.plan-recover.txt`、`.idea/`、`.vscode/`；
+  第一次 `git add -A` 是 61 个文件，**如果数字突然暴涨到上千，先检查 `node_modules` 有没有被加进来**。
+
 ---
 
 ## 五、端到端验证流程
@@ -250,9 +299,11 @@ taskkill //F //PID <pid>
 | AI 对话记忆 | ✅ 已于 2026-10-15 做到「重启不失忆」：`AiService/PsychologicalSupportService.java` 的 `@Autowired ChatMemory chatMemory` 与 advisor 共用同一个 `MessageWindowChatMemory`，`ensureMemoryLoaded(...)` 在该会话重启后第一次 `/stream` 时从 `consultation_message` 回灌最近 30 条；仍未做的是持久化记忆仓库（Spring AI 2.1.0-M1 只自带 `InMemoryChatMemoryRepository`，没有 JDBC 版 `ChatMemoryRepository`），所以被删会话的记忆会短暂留在进程内。详见 `docs/api-contract.md` 2.2 |
 | 历史图片缺失 | 7 篇文章封面已于 2026-10-15 补齐（本地生成，经 `POST /api/file/upload` 挂到 `cover_image`）；`user.avatar` 只有 admin/tester 有（联调测试留下的），其余用户显示默认头像；旧服务器那批原始文件已清库、不可恢复 |
 | 头像裁剪/缩略图 | 上传的原图直接当头像，不生成多尺寸；前端只校验类型与 5MB 大小 |
-| 临时文件清理 | `sys_file_info` 里有 `is_temp`/`expire_time` 字段，但没有定时清理任务 |
+| 临时文件清理 | ✅ 已于 2026-10-15 实现：`config/SchedulingConfig.java`(`@EnableScheduling`) + `task/TempFileCleanupTask.java`，`@Scheduled(cron = "${file.temp-cleanup-cron:0 30 3 * * ?}")` 每天 03:30 清理 `is_temp=1` 且已过 `expire_time` 的文件（删磁盘 + 删 `sys_file_info`）。详见 `docs/api-contract.md` 2.6 |
+| 日期时间格式 | ✅ 已于 2026-10-15 统一为 `yyyy-MM-dd HH:mm:ss`（`config/JacksonConfig.java`）；⚠️ `spring.jackson.date-format` 对 `LocalDateTime` **无效**（见踩坑 10） |
 | 前端表单校验 | 已修 `ArticleDialog.vue`（校验不通过不再发请求）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 | 文章写操作与日记写操作 | ✅ 已于 2026-10-15 实现（见 `docs/api-contract.md` 2.3 / 2.4） |
+| git 仓库 | 工作区根仓库只管 `frontend/`、`docs/`、`CLAUDE.md`、`README.md`（`backend/` 保持独立仓库，见踩坑 11）；两个仓库都还没有 remote，提交要各自 `git add` |
 
 ---
 

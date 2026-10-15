@@ -39,25 +39,9 @@ public class EmotionDiary {
     @TableField("mood_score")
     private Integer moodScore;
 
-    // 主导情绪
-    @TableField("dominant_emotion")
-    private String dominantEmotion;
-
-    // 情绪触发因素
-    @TableField("emotion_triggers")
-    private String emotionTriggers;
-
-    // 日记正文
+    // 日记正文（今日感想）
     @TableField("diary_content")
     private String diaryContent;
-
-    // 睡眠质量 1-5
-    @TableField("sleep_quality")
-    private Integer sleepQuality;
-
-    // 压力水平 1-5
-    @TableField("stress_level")
-    private Integer stressLevel;
 
     // AI 情绪分析结果（JSON 字符串，结构与 SessionEmotionDTO 一致）
     @TableField("ai_emotion_analysis")

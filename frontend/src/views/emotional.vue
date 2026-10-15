@@ -24,16 +24,7 @@
                         <el-rate :model-value="scope.row.moodScore" :max="10" disabled />
                     </template>
                 </el-table-column>
-                <el-table-column label="生活指标" width="130">
-                    <template #default="scope">
-                        <div class="life-index">
-                            <span>睡眠 {{ scope.row.sleepQuality ?? '-' }}/5</span>
-                            <span>压力 {{ scope.row.stressLevel ?? '-' }}/5</span>
-                        </div>
-                    </template>
-                </el-table-column>
-                <el-table-column prop="emotionTriggers" label="情绪触发因素" min-width="140" show-overflow-tooltip />
-                <el-table-column prop="diaryContent" label="日记内容" min-width="220" show-overflow-tooltip />
+                <el-table-column prop="diaryContent" label="今日感想" min-width="260" show-overflow-tooltip />
                 <el-table-column label="操作" width="140" fixed="right">
                     <template #default="scope">
                         <el-button @click="viewSessionDetail(scope.row)" text type="primary">详情</el-button>
@@ -76,22 +67,11 @@
                         <el-descriptions-item label="情绪评分">
                             <el-rate :model-value="currentDetail.moodScore" :max="10" disabled />
                         </el-descriptions-item>
-                        <el-descriptions-item label="主要情绪">
-                            <el-tag :type="getEmotionTagType(currentDetail.dominantEmotion)">{{
-                                currentDetail.dominantEmotion ||
-                                '-' }}</el-tag>
-                        </el-descriptions-item>
-                        <el-descriptions-item label="睡眠质量">{{ currentDetail.sleepQuality || '-'
-                            }}/5</el-descriptions-item>
-                        <el-descriptions-item label="压力水平">{{ currentDetail.stressLevel || '-'
-                            }}/5</el-descriptions-item>
                     </el-descriptions>
                 </div>
                 <div class="detail-section">
-                    <h4>日记内容</h4>
+                    <h4>今日感想</h4>
                     <el-descriptions :column="1" border>
-                        <el-descriptions-item label="情绪触发因素">{{ currentDetail.emotionTriggers || '无'
-                            }}</el-descriptions-item>
                         <el-descriptions-item label="日记内容">{{ currentDetail.diaryContent || '无'
                             }}</el-descriptions-item>
                     </el-descriptions>
@@ -155,18 +135,6 @@ import PageHead from '@/components/PageHead.vue'
 import TableSearch from '@/components/TableSearch.vue'
 import { getEmotionalPage, deleteEmotional } from '@/api/admin'
 import { ElMessageBox } from 'element-plus'
-
-const getEmotionTagType = (emotion) => {
-    const emotionTypes = {
-        '快乐': 'success',
-        '平静': 'info',
-        '兴奋': 'warning',
-        '愤怒': 'danger',
-        '悲伤': 'info',
-        '焦虑': 'warning'
-    }
-    return emotionTypes[emotion] || 'info'
-}
 
 const getAiEmotionTagType = (emotion) => {
     const emotionTagMap = {
@@ -322,14 +290,6 @@ onMounted(() => {
     .user-name {
         color: var(--mh-text-1);
     }
-}
-
-.life-index {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: var(--mh-font-2);
-    color: var(--mh-text-2);
 }
 
 .detail-content {

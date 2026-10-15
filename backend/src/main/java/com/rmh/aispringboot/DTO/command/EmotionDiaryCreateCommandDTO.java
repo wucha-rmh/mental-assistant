@@ -23,20 +23,6 @@ public class EmotionDiaryCreateCommandDTO {
     @Max(value = 10, message = "心情评分范围是 1-10")
     private Integer moodScore;
 
-    @Size(max = 50, message = "主导情绪最多50个字符")
-    private String dominantEmotion;
-
-    @Size(max = 1000, message = "情绪触发因素最多1000个字符")
-    private String emotionTriggers;
-
     @Size(max = 2000, message = "日记内容最多2000个字符")
     private String diaryContent;
-
-    @Min(value = 1, message = "睡眠质量范围是 1-5")
-    @Max(value = 5, message = "睡眠质量范围是 1-5")
-    private Integer sleepQuality;
-
-    @Min(value = 1, message = "压力水平范围是 1-5")
-    @Max(value = 5, message = "压力水平范围是 1-5")
-    private Integer stressLevel;
 }

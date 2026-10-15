@@ -12,9 +12,9 @@
             </div>
         </div>
         <div class="content">
-            <!-- 情绪评分 -->
+            <!-- 第一步：心情评分 -->
             <div class="diary-card">
-                <div class="title">情绪记录</div>
+                <div class="title">心情评分</div>
                 <!-- 该日期已有记录时说明「保存=更新」，避免误以为新增了一条 -->
                 <div v-if="existingDiary" class="today-hint">
                     <el-icon><InfoFilled /></el-icon>
@@ -54,56 +54,19 @@
                     </div>
                 </div>
             </div>
-            <!-- 主要情绪 -->
+            <!-- 第二步：今日感想 -->
             <div class="diary-card">
-                <div class="title">主要情绪</div>
-                <div class="emotion-grid">
-                    <div
-                        v-for="emotion in emotionOptions"
-                        :key="emotion.name"
-                        class="emotion-card"
-                        :class="{ 'selected': emotion.name === diaryForm.dominantEmotion }"
-                        @click="selectEmotion(emotion.name)"
-                    >
-                        <el-image :src="emotion.url" class="emotion-image" />
-                        <div class="emotion-name">{{ emotion.name }}</div>
-                    </div>
-                </div>
-            </div>
-            <!-- 详细记录 -->
-            <div class="diary-card">
-                <div class="title">详细记录</div>
+                <div class="title">今日感想</div>
                 <div class="detail-form">
                     <div class="form-group">
-                        <div class="form-label">情绪触发因素</div>
-                        <el-input v-model="diaryForm.emotionTriggers" placeholder="今天什么事情影响了您的情绪？" type="textarea" :rows="3" maxLength="1000" show-word-limit></el-input>
-                    </div>
-                    <div class="form-group">
-                        <div class="form-label">今日感想</div>
-                        <el-input v-model="diaryForm.diaryContent" placeholder="写下您今天的想法、感受或发生的有趣事情..." type="textarea" :rows="5" maxLength="2000" show-word-limit></el-input>
-                    </div>
-                    <!-- 生活指标 -->
-                    <div class="life-indicators">
-                        <div class="indicator-group">
-                            <div class="form-label">睡眠质量</div>
-                            <el-select v-model="diaryForm.sleepQuality" placeholder="请选择">
-                                <el-option label="很差" :value="1"></el-option>
-                                <el-option label="较差" :value="2"></el-option>
-                                <el-option label="一般" :value="3"></el-option>
-                                <el-option label="良好" :value="4"></el-option>
-                                <el-option label="优秀" :value="5"></el-option>
-                            </el-select>
-                        </div>
-                        <div class="indicator-group">
-                            <div class="form-label">压力水平</div>
-                            <el-select v-model="diaryForm.stressLevel" placeholder="请选择">
-                                <el-option label="很低" :value="1"></el-option>
-                                <el-option label="较低" :value="2"></el-option>
-                                <el-option label="中等" :value="3"></el-option>
-                                <el-option label="较高" :value="4"></el-option>
-                                <el-option label="很高" :value="5"></el-option>
-                            </el-select>
-                        </div>
+                        <el-input
+                            v-model="diaryForm.diaryContent"
+                            placeholder="写下您今天的想法、感受或发生的有趣事情..."
+                            type="textarea"
+                            :rows="7"
+                            maxLength="2000"
+                            show-word-limit
+                        ></el-input>
                     </div>
                     <div class="action-buttons">
                         <el-button @click="resetForm">重置</el-button>
@@ -125,7 +88,6 @@
                         <div class="item-head">
                             <span class="item-date">{{ item.diaryDate }}</span>
                             <el-rate :model-value="item.moodScore" :max="10" disabled size="small" />
-                            <el-tag v-if="item.dominantEmotion" effect="light" round>{{ item.dominantEmotion }}</el-tag>
                         </div>
                         <p
                             v-if="item.diaryContent"
@@ -133,9 +95,6 @@
                             :class="{ 'is-expanded': expandedIds.includes(item.id) }"
                         >{{ item.diaryContent }}</p>
                         <div class="item-foot">
-                            <span v-if="item.emotionTriggers">触发因素：{{ item.emotionTriggers }}</span>
-                            <span v-if="item.sleepQuality">睡眠 {{ item.sleepQuality }}/5</span>
-                            <span v-if="item.stressLevel">压力 {{ item.stressLevel }}/5</span>
                             <span v-if="item.updatedAt && item.updatedAt !== item.createdAt">最后更新 {{ item.updatedAt }}</span>
                             <el-button
                                 v-if="item.diaryContent && item.diaryContent.length > 80"
@@ -171,30 +130,11 @@
     // 情绪评分
     const emotionStatus = ['绝望崩溃', '消沉抑郁', '焦虑烦躁', '低落不悦', '平静淡然', '轻松惬意', '愉悦舒心', '欢欣满足', '兴奋欣喜', '极致幸福']
 
-    // 情绪选项
-    const emotionOptions = [
-        { name: '开心', url: new URL('@/assets/images/开心.png', import.meta.url).href },
-        { name: '平静', url: new URL('@/assets/images/平静.png', import.meta.url).href },
-        { name: '焦虑', url: new URL('@/assets/images/焦虑.png', import.meta.url).href },
-        { name: '悲伤', url: new URL('@/assets/images/悲伤.png', import.meta.url).href },
-        { name: '兴奋', url: new URL('@/assets/images/兴奋.png', import.meta.url).href },
-        { name: '疲惫', url: new URL('@/assets/images/疲惫.png', import.meta.url).href },
-        { name: '惊讶', url: new URL('@/assets/images/惊讶.png', import.meta.url).href },
-        { name: '困惑', url: new URL('@/assets/images/困惑.png', import.meta.url).href },
-    ]
-
-    const selectEmotion = (emotion) => {
-        diaryForm.dominantEmotion = emotion
-    }
-
+    // 表单只有两项：心情评分 + 今日感想（日期用于定位「哪一天」）
     const diaryForm = reactive({
         diaryDate: dayjs().format('YYYY-MM-DD'),
         moodScore: null,
-        dominantEmotion: '',
-        emotionTriggers: '',
-        diaryContent: '',
-        sleepQuality: null,
-        stressLevel: null
+        diaryContent: ''
     })
 
     // 当前所选日期已有的记录（null = 该日期还没有记录，保存会新增）
@@ -203,11 +143,7 @@
     const emptyForm = (date) => ({
         diaryDate: date || dayjs().format('YYYY-MM-DD'),
         moodScore: null,
-        dominantEmotion: '',
-        emotionTriggers: '',
-        diaryContent: '',
-        sleepQuality: null,
-        stressLevel: null
+        diaryContent: ''
     })
 
     // 把某条记录回填到表单（用于编辑已有日记）
@@ -215,11 +151,7 @@
         Object.assign(diaryForm, {
             diaryDate: item.diaryDate,
             moodScore: item.moodScore,
-            dominantEmotion: item.dominantEmotion || '',
-            emotionTriggers: item.emotionTriggers || '',
-            diaryContent: item.diaryContent || '',
-            sleepQuality: item.sleepQuality ?? null,
-            stressLevel: item.stressLevel ?? null
+            diaryContent: item.diaryContent || ''
         })
     }
 
@@ -559,49 +491,6 @@
             }
         }
 
-        .emotion-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: var(--mh-space-4);
-
-            .emotion-card {
-                padding: var(--mh-space-4);
-                border: 2px solid var(--mh-border);
-                border-radius: var(--mh-radius);
-                background: var(--mh-surface-soft);
-                text-align: center;
-                cursor: pointer;
-                transition: all 0.2s ease;
-
-                &:hover {
-                    border-color: var(--mh-primary-light-5);
-                    transform: translateY(-2px);
-                }
-
-                .emotion-image {
-                    width: 48px;
-                    height: 48px;
-                }
-
-                /* 旧版这里写死 padding: 0 75px，把文字挤成一条 */
-                .emotion-name {
-                    margin-top: var(--mh-space-2);
-                    font-size: var(--mh-font-3);
-                    color: var(--mh-text-2);
-                }
-
-                &.selected {
-                    border-color: var(--mh-primary);
-                    background: var(--mh-primary-light-9);
-
-                    .emotion-name {
-                        color: var(--mh-primary);
-                        font-weight: 600;
-                    }
-                }
-            }
-        }
-
         .detail-form {
             .form-group {
                 margin-bottom: var(--mh-space-4);
@@ -612,15 +501,6 @@
                 font-size: var(--mh-font-3);
                 font-weight: 500;
                 color: var(--mh-text-2);
-            }
-
-            .life-indicators {
-                display: flex;
-                gap: var(--mh-space-5);
-
-                .indicator-group {
-                    flex: 1;
-                }
             }
 
             .action-buttons {

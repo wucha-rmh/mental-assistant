@@ -600,17 +600,21 @@ GET /api/emotion-diary/admin/page                           （仅管理员）
 {
   "id": 28, "userId": 4, "username": "ces", "nickname": "1561",
   "diaryDate": "2025-11-11", "moodScore": 6,
-  "sleepQuality": 4, "stressLevel": 2,
-  "dominantEmotion": "平静", "emotionTriggers": "...", "diaryContent": "...",
+  "diaryContent": "今天……",
   "aiEmotionAnalysis": "{\"primaryEmotion\":\"开心\",...}",   // JSON 字符串或 null
   "aiAnalysisUpdatedAt": "...", "createdAt": "...", "updatedAt": "..."
 }
 ```
 
+> 2026-10-15 **精简**：`dominantEmotion`（主要情绪）、`emotionTriggers`（情绪触发因素）、
+> `sleepQuality`（睡眠质量）、`stressLevel`（压力水平）四个字段已从**库表、实体、DTO、前端**里彻底删除，
+> 日记只剩「心情评分 + 今日感想」两部分（备份见 `.db-backup/emotion_diary_before_slim_*.sql`）。
+> 历史数据里这四列的内容不再提供，接口也不再返回它们。
+
 > ⚠️ `aiEmotionAnalysis` 在 `emotional.vue:240-245` 被 `JSON.parse`（**无 try/catch**）：
 > 后端对「不以 `{` 开头 / 解析失败」的值统一返回 `null`，并保证解析结果里的
 > `improvementSuggestions` 是数组（`emotional.vue:110` 直接 `v-for`）。
-> 库里 17 行日记中只有 4 行有分析结果，其余为 `null`。
+> 库里 19 行日记中只有 5 行有分析结果，其余为 `null`（这 5 行是 2025-09 的种子数据）。
 
 #### 记录心情日记（登录用户）
 
@@ -622,12 +626,11 @@ POST /api/emotion-diary                                     （需 token）
 
 | 字段 | 说明 |
 |---|---|
-| `diaryDate` | `YYYY-MM-DD`，留空按今天算；格式不对 → `日期格式不正确，应为 yyyy-MM-dd` |
-| `moodScore` | 必填，1-10 |
-| `dominantEmotion` | 可空，或 8 个枚举之一（开心/平静/焦虑/悲伤/兴奋/疲惫/惊讶/困惑） |
-| `emotionTriggers` | 可空，≤1000 |
-| `diaryContent` | 可空，≤2000 |
-| `sleepQuality` / `stressLevel` | 可空，1-5 |
+| `diaryDate` | `YYYY-MM-DD`，留空按今天算；格式不对 → `日期格式不正确，应为 yyyy-MM-dd`；落在未来 → `不能记录未来日期的日记` |
+| `moodScore` | 必填，1-10（越界 → `心情评分范围是 1-10`） |
+| `diaryContent` | 可空，≤2000（今日感想） |
+
+> 2026-10-15 精简后请求体只有这三个字段；多传旧字段（如 `dominantEmotion`）后端会忽略，不再报错也不落库。
 
 - `emotion_diary` 上 `(user_id, diary_date)` 有唯一键：**同一天重复提交按覆盖更新处理**，不会产生第二条记录，返回的 `id` 不变。
 - `userId` 一律取当前登录用户，前端传什么都不看。
@@ -750,6 +753,8 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 日期时间格式 | ✅ 已于 2026-10-15 统一（见 一.5）：`LocalDateTime` 输出 `yyyy-MM-dd HH:mm:ss`（`config/JacksonConfig.java` 注册 Jackson 3 序列化器） |
 | 头像裁剪/多尺寸 | 上传的原图直接当头像，不生成缩略图；前端只限制了类型与 5MB 大小 |
 | 知识文章 / 情绪日记写操作 | ✅ 已于 2026-10-15 实现（见 2.3、2.4）：文章新增/编辑/上下架/删除、日记新增/删除 |
+| 情绪日记字段精简 | ✅ 已于 2026-10-15 完成（见 2.4）：日记只剩「心情评分 + 今日感想」，`dominantEmotion`/`emotionTriggers`/`sleepQuality`/`stressLevel` 四列已从库表到前端全部删除 |
+| 库表冗余（全库级） | ⬜ 2026-10-15 做了整库盘点（9 张表 108 行），列出重复索引、零引用遗留表 `ai_analysis_task`/`user_favorite`、空列/常量列、半成品列，**尚未动手清理** |
 | 前端表单校验 | `ArticleDialog.vue` 的 `handleSubmit` 原先校验不通过也照发请求（已修成 `if (!valid) return`）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 
 ---
@@ -797,5 +802,6 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **用户端可查看自己的情绪日记**：新增 `GET /api/emotion-diary/page`（`EmotionDiaryController.myPage`，`userId` 强制取登录态，复用 `EmotionDiaryService.adminPage` 的查询与 DTO）。前端 `api/frontend.js#getMyEmotionDiaries` + `views/emotionDiary.vue` 新增「我的记录」卡片：按日期倒序、评分 / 情绪标签 / 正文（超 3 行可展开）/ 触发因素与睡眠压力指标、分页，提交后自动回到第一页并刷新（共 **25 个接口**）。7 项实测通过：只返回本人记录（tester 1 条，与库里 `user_id=6` 一致）、`pageNum` 与 `currentPage` 命名都兼容、无 token → `HTTP 401` + `A0301`、`moodScreRange` 区间筛选生效、管理员后台接口仍是全部 18 条、普通用户访问后台接口被拒。 |
 | 2026-10-15 | **用户可编辑/删除自己的日记**：新增 `DELETE /api/emotion-diary/{id}`（`EmotionDiaryService.deleteOwnDiary`，按「主键 + 登录用户」双条件校验，删不到别人的记录）；`GET /api/emotion-diary/page` 增加 `diaryDate` 参数以精确取某一天；`EmotionDiaryService` 把分页查询抽成共用的 `query(...)`，后台 `adminPage` 与用户端 `userPage` 各自调用。编辑复用 `POST /api/emotion-diary`（改哪一天就传哪一天）。前端 `emotionDiary.vue` 增加日期选择器（禁选未来）、按日期回填/提示、按钮在「保存记录 / 更新这篇记录」间切换、列表每条给「编辑 / 删除」（删除有二次确认，删空末页会回退页码）。7 项实测：删自己的 → 200 且记录消失；删别人的 → `日记不存在或无权访问` 且对方记录仍在；删不存在的 id → 同一句提示；无 token → 401；普通用户调后台删除仍被拒；管理员后台删除仍可用；测试记录已清理，全库回到 18 条日记（共 **26 个接口**）。 |
 | 2026-10-15 | 全站 UI 统一（温和疗愈风）：新增 `frontend/src/styles/tokens.scss`（设计令牌 + Element Plus CSS 变量映射）与 `styles/index.scss`（全局样式与组件微调），26 个页面/组件改用令牌；同时修掉侧栏高亮写死、看板 KPI 类名不匹配、分页参数用 `current`、翻页丢筛选、首页 CTA 无跳转、情绪面板数字写死、4 个 `@keyframes` 缺失、用户/AI 消息无法区分、Enter 不发送等问题（见 `CLAUDE.md` 三.9）。 |
+| 2026-10-15 | **情绪日记精简为「心情评分 + 今日感想」**：库表 `emotion_diary` 删除 `dominant_emotion`、`emotion_triggers`、`sleep_quality`、`stress_level` 四列（列数 13 → 9，迁移前 `mysqldump` 备份到 `.db-backup/emotion_diary_before_slim_20261015-172549.sql`，另存一份 CSV 到 `.tmp-schema/`）；同步删掉 `entity/EmotionDiary.java` 的四个字段、`DTO/command/EmotionDiaryCreateCommandDTO.java` 与 `DTO/response/EmotionDiaryAdminItemDTO.java` 的对应字段、`EmotionDiaryService.saveDiary`/`toDTO` 里的读写逻辑（`grep DominantEmotion\|EmotionTriggers\|SleepQuality\|StressLevel` 在 `backend/src` 已 0 命中，`mvn -B -q compile` 通过，`DataAnalyticsService` 只读 `moodScore`/`userId`/`diaryDate` 故看板不受影响）。前端 `views/emotionDiary.vue` 删掉整个「主要情绪」卡片（8 张情绪图 + `emotionOptions`/`selectEmotion`）与睡眠/压力下拉、情绪触发因素输入，表单只剩「心情评分」+「今日感想」；`views/emotional.vue` 删掉「生活指标」列、「情绪触发因素」列与详情弹窗的对应四项。实测：新增（`id=34`）→ 200 且响应体只含三个字段、我的记录与后台分页都能查到、`moodScore=42` 仍被拦（`心情评分范围是 1-10`）、看板 overview 200、库列数 9；测试记录已删除，库回到 19 行。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。

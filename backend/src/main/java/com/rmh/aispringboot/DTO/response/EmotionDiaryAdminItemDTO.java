@@ -31,16 +31,8 @@ public class EmotionDiaryAdminItemDTO {
     private LocalDate diaryDate;
     // 心情评分 1-10
     private Integer moodScore;
-    // 主导情绪
-    private String dominantEmotion;
-    // 情绪触发因素
-    private String emotionTriggers;
-    // 日记正文
+    // 日记正文（今日感想）
     private String diaryContent;
-    // 睡眠质量 1-5
-    private Integer sleepQuality;
-    // 压力水平 1-5
-    private Integer stressLevel;
     // AI 情绪分析（JSON 字符串，非法数据会被置为 null 以免前端解析崩溃）
     private String aiEmotionAnalysis;
     // AI 分析更新时间

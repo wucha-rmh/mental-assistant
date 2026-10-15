@@ -131,11 +131,7 @@ public class EmotionDiaryService {
             LambdaUpdateWrapper<EmotionDiary> update = Wrappers.lambdaUpdate(EmotionDiary.class)
                     .eq(EmotionDiary::getId, existing.getId())
                     .set(EmotionDiary::getMoodScore, command.getMoodScore())
-                    .set(EmotionDiary::getDominantEmotion, trimToNull(command.getDominantEmotion()))
-                    .set(EmotionDiary::getEmotionTriggers, trimToNull(command.getEmotionTriggers()))
                     .set(EmotionDiary::getDiaryContent, trimToNull(command.getDiaryContent()))
-                    .set(EmotionDiary::getSleepQuality, command.getSleepQuality())
-                    .set(EmotionDiary::getStressLevel, command.getStressLevel())
                     .set(EmotionDiary::getUpdatedAt, now);
             emotionDiaryMapper.update(null, update);
             return toDTO(emotionDiaryMapper.selectById(existing.getId()), loadUsers(List.of(userId)));
@@ -145,11 +141,7 @@ public class EmotionDiaryService {
                 .userId(userId)
                 .diaryDate(diaryDate)
                 .moodScore(command.getMoodScore())
-                .dominantEmotion(trimToNull(command.getDominantEmotion()))
-                .emotionTriggers(trimToNull(command.getEmotionTriggers()))
                 .diaryContent(trimToNull(command.getDiaryContent()))
-                .sleepQuality(command.getSleepQuality())
-                .stressLevel(command.getStressLevel())
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -265,11 +257,7 @@ public class EmotionDiaryService {
                 .nickname(user == null ? null : user.getNickname())
                 .diaryDate(diary.getDiaryDate())
                 .moodScore(diary.getMoodScore())
-                .dominantEmotion(diary.getDominantEmotion())
-                .emotionTriggers(diary.getEmotionTriggers())
                 .diaryContent(diary.getDiaryContent())
-                .sleepQuality(diary.getSleepQuality())
-                .stressLevel(diary.getStressLevel())
                 .aiEmotionAnalysis(normalizeAiAnalysis(diary.getAiEmotionAnalysis()))
                 .aiAnalysisUpdatedAt(diary.getAiAnalysisUpdatedAt())
                 .createdAt(diary.getCreatedAt())

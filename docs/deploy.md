@@ -1,164 +1,301 @@
-# 部署指南（云服务器）
+# 部署手册（云服务器 · 从零到上线）
 
-> 目标：把本项目部署到一台公网 Linux 服务器，Nginx 统一对外，后端只监听 127.0.0.1。
-> 配套模板在同目录上级的 `deploy/`：`mha.service`（systemd）、`mha.env.example`（环境变量）、`nginx.conf.example`（站点）。
+> 目标：把本项目部署到一台公网 Linux 服务器。**Nginx 统一对外（80/443），后端只监听 127.0.0.1:1236，MySQL 只监听 127.0.0.1:3306。**
+> 配套模板在同级 `deploy/` 目录：`deploy.sh`（服务器初始化）、`mha.service`（systemd）、`mha.env.example`（环境变量）、`nginx.conf.example`（站点）、`pack.ps1`（本机构建 + 上传）。
 
-## 0. 一条硬事实：服务器不需要 GPU
+---
 
-所有 AI 能力都通过 HTTPS 调 `https://api.deepseek.com`（见 `backend/src/main/resources/application.yaml` 的 `spring.ai.openai`），
-服务器只跑 Spring Boot + MySQL + Nginx，**2 核 4G 起步就够**（`-Xmx512m`）。
+## 0. 开始前：3 个决定 + 4 个值
 
-## 1. 规格与软件
+| 决定 | 选项 | 影响 |
+|---|---|---|
+| ① 用不用域名 | 有域名 / 只用 IP | 用 IP 可以跳过第 6 节 HTTPS（但浏览器会提示不安全，且登录态走明文） |
+| ② 要不要搬现有数据 | 全新空库 / 搬本机数据 | 搬的话多做第 5 节（当前本机有 5 用户、8 篇文章、19 条日记、10 个上传文件） |
+| ③ 在哪构建产物 | 本机构建后上传 / 服务器上构建 | 本机上传更省服务器内存；服务器构建需要装 Maven + Node |
 
-| 项 | 建议 |
+要准备好的 4 个值（后面每一节都会用到）：
+
+| 值 | 怎么来 |
 |---|---|
-| 服务器 | 2 核 4G / 系统盘 40G+（Ubuntu 22.04 LTS 最省事） |
-| 安全组 | 只开 22（SSH，建议限你的 IP）、80、443；**3306 和 1236 一律不要对公网开** |
-| JDK | 17（`backend/pom.xml` 里 `<java.version>17</java.version>`；装 17 或 21 都行） |
-| MySQL | 8.x，`bind-address = 127.0.0.1` |
-| Nginx | 1.18+ |
-| Node.js / Maven | **只在构建时需要**，跑起来不需要（可本机构建好再上传产物） |
+| `服务器IP` / `域名` | 云控制台 |
+| `JWT_SECRET` | `openssl rand -base64 48`（**≥ 32 位**，后端启动会强校验） |
+| `DB_PASSWORD` | 自己定的强口令（应用专用账号 `mha`，不要用 root） |
+| DeepSeek API Key | 本机 `backend/src/main/resources/application-local.yaml` 里那个 `sk-...` |
+
+**服务器不需要 GPU**：所有 AI 能力都是 HTTPS 调 `https://api.deepseek.com`（见 `backend/src/main/resources/application.yaml` 的 `spring.ai.openai`），2 核 4G 起步即可（`-Xmx512m`）。
+
+---
+
+## 1. 服务器初始化
+
+`deploy/deploy.sh` 把第 1–4 节和 Nginx 站点一次做完（可重复执行，已存在的不会重建）：
 
 ```bash
-sudo apt update && sudo apt install -y openjdk-17-jdk mysql-server nginx
+# 在服务器上，仓库目录内执行（脚本会读 deploy/ 下的模板）
+sudo SERVER_NAME=your-domain.com bash deploy/deploy.sh
 ```
 
-## 2. 目录规划
-
-```
-/opt/mha/backend/app.jar          后端产物
-/opt/mha/backend/uploads/         上传文件（头像、封面）—— 迁移时必须一起搬
-/var/www/mental-health/dist/      前端构建产物
-/etc/mha/mha.env                  环境变量（chmod 600，属主 mha）
-```
+想手动来一遍，就是下面这些（Ubuntu 22.04 / Debian 系）：
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin mha
-sudo mkdir -p /opt/mha/backend/uploads /var/www/mental-health /etc/mha
-sudo chown -R mha:mha /opt/mha
+sudo apt update && sudo apt install -y openjdk-17-jdk-headless mysql-server nginx curl
+# 应用用户 + 目录
+sudo useradd -r -s /usr/sbin/nologin mha || true
+sudo mkdir -p /opt/mha/backend/uploads /var/www/mental-health/dist /etc/mha
+sudo chown -R mha:mha /opt/mha /var/www/mental-health
+# 防火墙：只开 SSH / HTTP / HTTPS
+sudo ufw allow OpenSSH && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw --force enable
 ```
 
-## 3. 数据库
+> ⚠️ **云控制台的安全组**也要只开 22 / 80 / 443。`3306`、`1236` 一律不要对公网开放 —— 后端接口没有 HTTPS、MySQL 是裸协议，暴露即等于送人。
+
+目录规划：
+
+```
+/opt/mha/backend/app.jar           后端产物（Java 进程的 -jar）
+/opt/mha/backend/uploads/          上传文件：头像、文章封面（迁移时必须一起搬）
+/var/www/mental-health/dist/       前端构建产物（Nginx 的 root）
+/etc/mha/mha.env                   环境变量（chmod 600，属主 mha）
+```
+
+---
+
+## 2. 数据库
 
 ```bash
-# 建库 + 专用账号（不要用 root 跑应用）
-sudo mysql -e "CREATE DATABASE mental_health_assistant DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
-sudo mysql -e "CREATE USER 'mha'@'127.0.0.1' IDENTIFIED BY '换成强口令';"
+# 建库 + 应用专用账号（不要用 root 跑应用）
+sudo mysql -e "CREATE DATABASE IF NOT EXISTS mental_health_assistant DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+sudo mysql -e "CREATE USER IF NOT EXISTS 'mha'@'127.0.0.1' IDENTIFIED BY '换成强口令';"
+sudo mysql -e "ALTER USER 'mha'@'127.0.0.1' IDENTIFIED BY '换成强口令';"
 sudo mysql -e "GRANT ALL PRIVILEGES ON mental_health_assistant.* TO 'mha'@'127.0.0.1'; FLUSH PRIVILEGES;"
 
-# 只建结构（8 张表，无数据）——仓库里的 db/schema.sql
+# 建 8 张表（只结构、无数据）
 mysql -umha -p mental_health_assistant < db/schema.sql
-
-# 或者：连数据一起恢复（.db-backup/mental_health_assistant_full_*.sql 里带 USE 语句，
-# 用 source 恢复时不要在别的库里执行，见 .db-backup/RESTORE.md）
 ```
 
-> ⚠️ `db/schema.sql` 是 2026-10-15 导出的结构快照，**以后每次改表都要重新导出**（命令见 `CLAUDE.md` 第二节「数据库」）。
-
-## 4. 后端
-
-构建（本机或服务器都行）：
+确认没有对公网监听：
 
 ```bash
-cd backend && mvn -B clean package -DskipTests
-# 产物：backend/target/application-0.0.1-SNAPSHOT.jar
+grep -E '^\s*bind-address' /etc/mysql/mysql.conf.d/mysqld.cnf   # 期望 127.0.0.1
+ss -lntp | grep 3306                                            # 期望 127.0.0.1:3306
 ```
 
-环境变量（`/etc/mha/mha.env`，照抄 `deploy/mha.env.example`）：
+> `db/schema.sql` 是 2026-10-15 导出的结构快照，含 `DROP TABLE IF EXISTS`、**不含** `CREATE DATABASE`/`USE`。
+> 以后每次 `ALTER TABLE` / 加实体，都要重新导出并提交（命令见 `CLAUDE.md` 二「数据库」）。
+
+---
+
+## 3. 后端
+
+**3.1 构建产物**（本机执行；服务器上构建就把 `backend/` 整个传上去再跑同样的命令）
 
 ```bash
-JWT_SECRET=<openssl rand -base64 48>
+cd backend
+mvn -B clean package -DskipTests        # 本机若因 target 的 ACE 报 clean 失败，见第 10 节
+# 产物：backend/target/application-0.0.1-SNAPSHOT.jar  →  上传后重命名为 app.jar
+```
+
+**3.2 上传 jar**
+
+```bash
+scp backend/target/application-0.0.1-SNAPSHOT.jar root@你的IP:/opt/mha/backend/app.jar
+sudo chown mha:mha /opt/mha/backend/app.jar
+```
+
+**3.3 环境变量**（照抄 `deploy/mha.env.example` → `/etc/mha/mha.env`）
+
+```bash
+JWT_SECRET=<openssl rand -base64 48 的输出>
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USERNAME=mha
-DB_PASSWORD=<数据库口令>
-# AI Key 也可放这里：SPRING_AI_OPENAI_API_KEY=sk-xxx
+DB_PASSWORD=<第 2 节设的数据库口令>
+SPRING_AI_OPENAI_API_KEY=sk-xxx
 ```
 
-> **优先级**：环境变量 > `application-local.yaml` > `application.yaml`。
-> 仓库里的 `application.yaml` 已经不含任何口令；本机开发把真实值放进
-> `backend/src/main/resources/application-local.yaml`（已 gitignore）。
-> `jwt.secret` 少于 32 位**后端会拒绝启动**（`config/JwtConfig.java` 的 `@PostConstruct`）。
+```bash
+sudo chmod 600 /etc/mha/mha.env && sudo chown mha:mha /etc/mha/mha.env
+```
 
-systemd 托管：
+> **配置优先级**：命令行参数 > **环境变量** > `application-local.yaml` > `application.yaml`。
+> 仓库里的 `application.yaml` **不含任何口令**（只有 `${JWT_SECRET:}`、`${DB_PASSWORD:}` 这类占位符），
+> 所以生产环境根本不需要 `application-local.yaml`。少配 `JWT_SECRET`（或少于 32 位）后端会**拒绝启动**，
+> 这是故意的：历史上真实的密钥和 MySQL `root` 口令曾提交进 git。
+
+**3.4 systemd 托管**
 
 ```bash
 sudo cp deploy/mha.service /etc/systemd/system/mha.service
-sudo systemctl daemon-reload && sudo systemctl enable --now mha
-journalctl -u mha -f
+sudo systemctl daemon-reload
+sudo systemctl enable --now mha
+systemctl status mha --no-pager
+journalctl -u mha -f          # 看到 "Started AiSpringbootApplication" 即成功
 ```
 
-| ⚠️ 时区 | `mha.service` 里必须保留 `Environment="TZ=Asia/Shanghai"`。看板的「今天/趋势」、日记日期、每天 03:30 的临时文件清理 cron 都按系统时区算，不设会整体偏 8 小时。 |
+| ⚠️ 时区 | `mha.service` 里必须保留 `Environment="TZ=Asia/Shanghai"`。看板的「今天/趋势」、日记日期、每天 03:30 的临时文件清理都按系统时区算，不设会整体偏 8 小时。 |
 |---|---|
 
-## 5. 前端 + Nginx
+上传文件落在 `/opt/mha/backend/uploads/`（`file.upload-dir: ./uploads` 相对于 `WorkingDirectory`）。
+
+---
+
+## 4. 前端 + Nginx
 
 ```bash
-cd frontend && npm ci && npm run build
-sudo cp -r dist/* /var/www/mental-health/dist/
+cd frontend
+npm ci
+npm run build                 # 产物在 frontend/dist/
 ```
 
-前端**不需要改任何配置**：`frontend/src/utils/request.js` 的 baseURL 是 `/api`，`frontend/src/config/index.js` 的
-`fileBaseUrl` 是空串（同源），所以前后端同域部署时**不涉及跨域（CORS）**。
+上传到服务器（本机 → 服务器）：
 
 ```bash
-sudo cp deploy/nginx.conf.example /etc/nginx/conf.d/mental-health.conf
-# 改 server_name 与 root 路径
+scp -r frontend/dist/* root@你的IP:/var/www/mental-health/dist/
+```
+
+配置站点：
+
+```bash
+sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/mental-health.conf
+sudo sed -i 's/your-domain.com/你的域名或IP/' /etc/nginx/sites-available/mental-health.conf
+sudo ln -sf /etc/nginx/sites-available/mental-health.conf /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default      # 避免默认站点抢 80
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-三个最容易踩的点（模板里都已写好）：
+前端**不需要改任何配置**：`frontend/src/utils/request.js` 的 baseURL 是 `/api`，`frontend/src/config/index.js` 的
+`fileBaseUrl` 是空串（同源）→ 前后端同域部署**不涉及跨域（CORS）**，后端也就没有 CORS 配置。
+
+模板里已经写好的三个必踩点：
 
 1. `try_files $uri $uri/ /index.html` —— 前端用 `createWebHistory()`，刷新 `/back/users` 这类子路径必须回落。
-2. `proxy_buffering off` —— **AI 回复是 SSE 流**，不关缓冲就会等全文生成完一次性吐出。
-3. `client_max_body_size 10m` —— 上传接口上限（后端 `max-request-size` 也是 10MB）。
+2. `proxy_buffering off` —— **AI 回复是 SSE 流**，不关缓冲就会等全文生成完一次性吐出（表现为「转半天然后整段冒出来」）。
+3. `client_max_body_size 10m` —— 与后端 `spring.servlet.multipart.max-request-size` 对齐。
 
-## 6. HTTPS
+---
+
+## 5. 数据迁移（可选，把本机数据搬上去）
+
+思路：**先结构、再数据、最后文件**。库里存的文件地址是 `/files/...` 相对路径，所以**不需要改任何路径**，但磁盘上的文件必须一起搬。
+
+```bash
+# ① 本机：全量导出（含 CREATE DATABASE 与 USE，连库带数据）
+mysqldump -uroot -p123456 --single-transaction --routines --triggers --events \
+  --databases mental_health_assistant \
+  --result-file=D:\mental_health_assistant\.db-backup\deploy-full.sql
+
+# ② 本机：打包上传文件（头像 / 文章封面）
+tar czf uploads.tar.gz -C backend uploads
+```
+
+```bash
+# ③ 服务器：恢复（用 root 导入，因为 dump 里带 CREATE DATABASE）
+sudo mysql < deploy-full.sql
+
+# ④ 服务器：解包上传文件到后端工作目录
+sudo tar xzf uploads.tar.gz -C /opt/mha/backend
+sudo chown -R mha:mha /opt/mha/backend/uploads
+```
+
+> ⚠️ 带 `--databases` 的 dump 里含 `USE mental_health_assistant;`，**不要在别的库里 `source`** 它 —— 否则会灌回/灌错库。
+> 恢复演练与更多细节见 `.db-backup/RESTORE.md`。
+> 只想搬数据、不想重建结构时：服务器先执行第 2 节的 `db/schema.sql`，再 `mysqldump --no-create-info` 导数据单独导入。
+
+---
+
+## 6. HTTPS（有域名就做）
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
+sudo certbot --nginx -d your-domain.com          # 自动改 nginx 配置并跳转 443
+sudo systemctl status certbot.timer              # 自动续期（certbot 会装 timer）
 ```
 
-签发后浏览器不再提示不安全；`/files/**` 也会自动走 HTTPS。
+签发后浏览器不再提示不安全；`/files/**`、`/api/**` 全部走 HTTPS。
 
-## 7. 安全加固清单
+---
+
+## 7. 上线自检（6 步，每步都有明确期望）
+
+| # | 检查 | 期望 |
+|---|---|---|
+| 1 | `curl -s http://127.0.0.1:1236/api/test` | 返回统一响应体 JSON（后端存活） |
+| 2 | `curl -sI https://你的域名/` | `200`，返回前端 `index.html` |
+| 3 | 浏览器登录 `tester / 123456` | 进前台「心理咨询」 |
+| 4 | 发一条消息 | AI 回复**逐字**出现（整段一次性出现 = `proxy_buffering` 没关） |
+| 5 | 后台上传一张封面 / 换个头像 | 列表能看到图（404 = `uploads/` 没搬或工作目录不对） |
+| 6 | 管理员登录 → 后台「用户管理」 | 能看到列表、能禁用/启用；被禁用的账号立刻无法登录 |
+
+---
+
+## 8. 日常运维
+
+**更新发布**（改完代码）
+
+```bash
+# 后端：构建 → 上传为 app.jar.new → 原子替换 → 重启
+scp backend/target/application-0.0.1-SNAPSHOT.jar root@你的IP:/opt/mha/backend/app.jar.new
+ssh root@你的IP "cd /opt/mha/backend && cp -f app.jar app.jar.bak && mv -f app.jar.new app.jar && chown mha:mha app.jar && systemctl restart mha"
+
+# 前端：构建 → 覆盖 dist（静态文件，无需重启 Nginx）
+scp -r frontend/dist/* root@你的IP:/var/www/mental-health/dist/
+```
+
+> 改了 `ALTER TABLE` 记得同步 `db/schema.sql`；`app.jar.bak` 就是回滚用的上一个版本（`mv app.jar.bak app.jar && systemctl restart mha`）。
+
+**备份**（建议 crontab 每天跑，`crontab -e`）
+
+```bash
+30 3 * * * mysqldump -umha -p'数据库口令' --single-transaction --routines --triggers --events mental_health_assistant | gzip > /var/backups/mha-$(date +\%F).sql.gz
+40 3 * * * tar czf /var/backups/mha-uploads-$(date +\%F).tar.gz -C /opt/mha/backend uploads
+50 3 * * * find /var/backups -name 'mha-*' -mtime +14 -delete
+```
+
+**日志**：后端 stdout/stderr 进 journald（`journalctl -u mha --since today`），Nginx 走系统默认 logrotate。
+
+---
+
+## 9. 故障排查
+
+| 现象 | 大概率原因 / 处理 |
+|---|---|
+| 502 Bad Gateway | 后端没起来：`systemctl status mha` + `journalctl -u mha -n 100`；或 `proxy_pass` 端口写错 |
+| 启动即退出，日志 `IllegalStateException: jwt.secret 未配置或长度不足 32 位` | `mha.env` 没被读到（路径/权限）或 `JWT_SECRET` 太短 —— 生成：`openssl rand -base64 48` |
+| 启动报数据库连接失败 | `DB_*` 写错、MySQL 没起、或 `mha` 账号没有该库权限（第 2 节） |
+| 登录成功但立刻跳回登录页 | 浏览器里存的是**旧密钥签发的 token**（换过 `JWT_SECRET` 就会出现）；重新登录即可。前端拦截器对 `A0230/A0231/A0301` 会自动清 token 跳登录页 |
+| AI 回复整段一次性出现 | `location /api/` 里缺 `proxy_buffering off;` 与 `proxy_read_timeout 300s;` |
+| 上传大图报 413 / 空响应 | `client_max_body_size` 没设（Nginx 默认 1MB）；后端侧上限 5MB，超出会返回 `{"code":"5004"}` |
+| 上传的文件 404 | `uploads/` 没搬、或 `WorkingDirectory` 不对（文件落在别处）；第 5 节与第 3.4 节 |
+| 页面刷新 404 | `try_files ... /index.html` 缺失（前端是 history 路由） |
+| 看板「今天」和日期差 8 小时 | `mha.service` 里 `TZ=Asia/Shanghai` 没了 |
+| 中文乱码 | 库/表不是 `utf8mb4`，或连接串编码不对（`application.yaml` 的 url 已带 `utf8mb4` 相关参数） |
+| 请求返回 429 | 触发了 Nginx 登录限流（默认同一 IP 每分钟 5 次，`deploy/nginx.conf.example` 可调）；应用层还有「同账号连错 5 次锁 15 分钟」 |
+| 后台上传 `.html` 被拒 `不支持的文件类型` | 正常：白名单只收图片 `jpg/jpeg/png/gif/bmp/webp` 与 `mp4/webm`（防「上传即执行」） |
+
+---
+
+## 10. 上线前的安全清单
 
 | 项 | 状态 |
 |---|---|
-| 数据库口令不在仓库里 | ✅ 改为 `${DB_PASSWORD:}`，本机值在 gitignored 的 `application-local.yaml` |
-| JWT 密钥不在仓库里 + 启动强校验 | ✅ `${JWT_SECRET:}`，少于 32 位拒绝启动；旧值已随 git 历史泄露，**绝不要复用** |
-| 登录失败限流 | ✅ 应用层：同账号连错 5 次锁 15 分钟（`service/LoginAttemptLimiter.java`）；网关层：`limit_req_zone`（模板里） |
-| 上传扩展名白名单 | ✅ 只收 jpg/jpeg/png/gif/bmp/webp + mp4/webm（`service/FileStorageService.java`）；`.html`/`.svg` 会被拒 |
-| `/files/**` 防「上传即执行」 | ✅ 后端白名单 + 网关层 `nosniff`、CSP `sandbox`、拒绝脚本后缀 |
-| 上传超限返回统一响应体 | ✅ 5MB 上限，超出返回 `{"code":"5004"}`（不再是不带响应体的 413） |
-| 令牌异常不再 500 | ✅ 旧密钥/过期/已删用户的 token 一律 `401 + {"code":"A0230"}` |
-| 测试账号弱口令 | ⬜ **上线前必须处理**：把 `admin` / `tester` 的 `123456` 改掉或删掉 |
-| 数据库定期备份 | ⬜ 建议 crontab 每天 `mysqldump` + 打包 `uploads/`（模板见 `.db-backup/RESTORE.md`） |
-| 日志轮转 | ⬜ 后端 stdout 交给 journald 即可；Nginx 用默认 logrotate |
+| 数据库口令不在仓库里 | ✅ 已改 `${DB_PASSWORD:}`，真实值只在服务器环境变量 |
+| JWT 密钥不在仓库里 + 启动强校验 | ✅ 已改 `${JWT_SECRET:}`，< 32 位拒绝启动；**旧密钥已随 git 历史泄露，绝不复用** |
+| 登录失败限流 | ✅ 应用层同账号连错 5 次锁 15 分钟 + 网关层 `limit_req_zone` |
+| 上传扩展名白名单 + `/files` 加固 | ✅ 后端白名单；Nginx 再加 `nosniff`、CSP `sandbox`、拒绝脚本后缀 |
+| 令牌异常统一 401 | ✅ 旧密钥/过期/已删用户的 token 返回 `A0230`（不再 500） |
+| 只暴露 22 / 80 / 443 | ⬜ 检查云安全组 + `ufw status`；`3306`/`1236` 必须只监听 127.0.0.1 |
+| 测试账号弱口令 | ⬜ **必须处理**：`admin` / `tester` 的 `123456` 写在所有文档里 —— 改口令或删账号（后台「用户管理」可禁用） |
+| MySQL 专用账号 | ⬜ 用 `mha` 账号跑应用，不要用 `root`；`mysql_secure_installation` 走一遍 |
+| 定期备份 | ⬜ 按第 8 节加 crontab，并**演练一次恢复**（不然备份不算数） |
+| HTTPS | ⬜ 有域名就走第 6 节；没有也建议自签或用云厂商证书 |
 
-## 8. 备份
+---
 
-```bash
-# 结构 + 数据
-mysqldump -umha -p --single-transaction --routines --triggers --events \
-  mental_health_assistant > /var/backups/mha-$(date +%F).sql
-# 上传文件（头像/封面，丢了页面就是 404）
-tar czf /var/backups/mha-uploads-$(date +%F).tar.gz -C /opt/mha/backend uploads
-```
+## 11. 本机（Windows/DSH 沙箱）才有的坑，服务器上不会遇到
 
-## 9. 上线自检
-
-1. `curl -s http://127.0.0.1:1236/api/test` → 后端存活。
-2. `curl -sI https://你的域名/` → 200，前端首页。
-3. 浏览器登录 `tester / 123456` → 能进前台。
-4. 发一条消息 → **逐字出现**（不逐字就是 `proxy_buffering` 没关）。
-5. 上传一张封面图 → 列表能看到图（404 就是 `uploads/` 没搬或工作目录不对）。
-6. 管理员登录 → 后台「用户管理」能看列表、能禁用/启用（禁用后该账号立刻无法登录，已登录的也会被踢）。
-
-## 10. 本机才有的坑（服务器上不会遇到）
-
-- 本机 `mvn -B clean compile` 因 `backend/target` 上继承的 ACE 会失败，用 `mvn -B compile`；
-  服务器上没有这个 ACL，`mvn clean package` 正常。
-- 本机沙箱里 `npm run build` 会因 esbuild 的 `spawn EPERM` 失败（命名管道限制），
-  装包/构建这类命令要用一次性提权跑；服务器上没有这个限制。
+- 本机 `mvn -B clean compile` 因 `backend/target` 上继承的 `Everyone:(DENY)(DC)` ACE 会失败 →
+  用 `mvn -B compile`（或 `mvn -B package` 不加 `clean`）。服务器上没有这个 ACL，`mvn clean package` 正常。
+- 本机沙箱里 `npm run build` 会因 esbuild 的 `spawn EPERM`（命名管道限制）失败 →
+  构建类命令要用一次性提权跑。服务器上没有这个限制。
+- 本机 `JWT_SECRET` 等真实值放在 gitignored 的 `backend/src/main/resources/application-local.yaml`；
+  **服务器上不需要这个文件**，用 `/etc/mha/mha.env`。

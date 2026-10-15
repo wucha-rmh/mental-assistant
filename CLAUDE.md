@@ -245,7 +245,9 @@ ERROR ... Unable to handle the Spring Security Exception because the response is
 
 - 现在**只有一个仓库**：`D:\mental_health_assistant\.git`，纳管 `frontend/`、`backend/`、`docs/`、`CLAUDE.md`、`README.md`、根 `.gitignore`（受跟踪文件 136 个）。
 - `backend/` 原本是独立仓库（remote `mental-health-assistant`），2026-10-15 用 **subtree** 方式并入根仓库：
-  **后端原有提交历史都还在**（`git log --oneline` 能看到 `cfa36dc`、`a87496c`、`f4c4c94` 等），合并提交是 `574b3dc`，工作树干净。
+  **后端原有提交历史都还在**（`git log --oneline` 能看到 `cfa36dc`、`a87496c`、`f4c4c94` 等），合并提交是 `574b3dc` + 收尾提交 `d0abeff`，工作树干净。
+- 查后端**单个文件**的历史要回到旧路径空间查：`git log --oneline f4c4c94 -- pom.xml`（`f4c4c94` 是并入前的最后一个后端提交）。
+  ⚠️ `git log --follow -- backend/pom.xml` 在合并提交上**不生效**（返回空），别用它判断历史有没有丢。
 - ⚠️ 提交一律在**工作区根**做（`git add -A && git commit`）；`backend/.git` 已移除，**不要**再在 `backend/` 里 `git init`，否则又变成两个仓库。
 - 忽略规则分两处：根 `.gitignore`（`node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/`、`.tmp*`、`.idea/`、`.vscode/`）与 `backend/.gitignore`（`target/`、`uploads/`、`application-local.yaml`、`*.log`）。
   **`application-local.yaml`（含 API Key）永远不要提交**；根 `git add -A` 正常是几十~上百个文件，**暴涨到上千先查 `node_modules` 有没有被加进来**。

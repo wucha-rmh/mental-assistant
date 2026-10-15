@@ -35,6 +35,7 @@
                         value-format="YYYY-MM-DD"
                         placeholder="选择日期"
                         :clearable="false"
+                        :editable="false"
                         :disabled-date="disableFutureDate"
                         @change="syncExistingDiary"
                     />

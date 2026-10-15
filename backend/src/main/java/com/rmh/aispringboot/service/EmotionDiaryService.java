@@ -117,6 +117,10 @@ public class EmotionDiaryService {
      */
     public EmotionDiaryAdminItemDTO saveDiary(Long userId, EmotionDiaryCreateCommandDTO command) {
         LocalDate diaryDate = parseDiaryDate(command.getDiaryDate());
+        // 日记是记录「已经发生的心情」，未来日期没有意义（前端日期选择器也不让选，这里兜底）
+        if (diaryDate.isAfter(LocalDate.now())) {
+            throw new BusinessException("不能记录未来日期的日记");
+        }
         EmotionDiary existing = emotionDiaryMapper.selectOne(Wrappers.<EmotionDiary>lambdaQuery()
                 .eq(EmotionDiary::getUserId, userId)
                 .eq(EmotionDiary::getDiaryDate, diaryDate)

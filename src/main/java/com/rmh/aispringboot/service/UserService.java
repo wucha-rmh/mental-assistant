@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.rmh.aispringboot.DTO.command.UserLoginCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
+import com.rmh.aispringboot.DTO.response.FileUploadResponseDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
 import com.rmh.aispringboot.entity.User;
 import com.rmh.aispringboot.enumClass.UserType;
@@ -11,9 +12,13 @@ import com.rmh.aispringboot.exception.BusinessException;
 import com.rmh.aispringboot.mapper.UserMapper;
 import com.rmh.aispringboot.service.convert.UserConvert;
 import com.rmh.aispringboot.util.JwtTokenUtil;
+import com.rmh.aispringboot.util.SecurityUserUtil;
 import jakarta.annotation.Resource;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDateTime;
 
 @Service
 public class UserService {
@@ -22,6 +27,9 @@ public class UserService {
 
     @Resource
     private UserMapper userMapper;
+
+    @Resource
+    private FileStorageService fileStorageService;
 
     public UserLoginResponseDTO login(UserLoginCommandDTO commandDTO)
     {
@@ -92,6 +100,50 @@ public class UserService {
         {
             throw new BusinessException("用户不存在");
         }
+        return UserConvert.entityToDetaiResponse(user);
+    }
+
+    /**
+     * 上传/更换当前登录用户的头像。
+     *
+     * <p>文件落在项目内（{@code backend/uploads/bussiness/user_avatar/}），
+     * {@code user.avatar} 存相对路径 {@code /files/...}，前端拼 {@code fileBaseUrl} 展示；
+     * 换头像时顺手清掉上一个头像文件，避免 uploads 目录里堆孤儿文件。
+     *
+     * @param file 前端以 {@code multipart/form-data} 的 {@code file} 字段提交的图片
+     * @return 更新后的用户信息（前端直接覆盖本地缓存的 userInfo）
+     */
+    public UserLoginResponseDTO.UserDetailResponseDTO updateAvatar(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("请选择要上传的头像图片");
+        }
+
+        Long userId = SecurityUserUtil.currentUser().getId();
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        // 先落盘 + 记 sys_file_info
+        FileUploadResponseDTO stored = fileStorageService.store(
+                file, FileStorageService.BUSINESS_TYPE_AVATAR, String.valueOf(userId), "avatar");
+        // 头像只能是图片，否则删掉刚写入的文件并报错
+        if (!FileStorageService.FILE_TYPE_IMAGE.equals(stored.getFileType())) {
+            fileStorageService.deleteStoredFile(stored.getFilePath());
+            throw new BusinessException("头像只能是图片文件（jpg / png / gif / webp / svg）");
+        }
+
+        String oldAvatar = user.getAvatar();
+        user.setAvatar(stored.getFilePath());
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+
+        // 清理上一个头像文件（只清理头像目录下的，且不是同一个文件）
+        if (oldAvatar != null && oldAvatar.startsWith(FileStorageService.AVATAR_URL_PREFIX)
+                && !oldAvatar.equals(stored.getFilePath())) {
+            fileStorageService.deleteStoredFile(oldAvatar);
+        }
+
         return UserConvert.entityToDetaiResponse(user);
     }
 }

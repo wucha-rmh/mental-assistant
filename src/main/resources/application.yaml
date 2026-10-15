@@ -30,3 +30,8 @@ jwt:
   header: Authorization  # token头部名称
   token-prefix: "Bearer "  # token前缀
 
+# 本地文件存储（上传的封面/头像都留在项目内，不依赖外部文件服务器）
+file:
+  upload-dir: ./uploads  # 相对于后端工作目录，即 backend/uploads；对外访问前缀是 /files/**
+  temp-cleanup-cron: "0 30 3 * * ?"  # 过期临时文件（is_temp=1 且 expire_time 已过）的清理时间，默认每天 03:30
+

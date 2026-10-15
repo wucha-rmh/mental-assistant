@@ -7,7 +7,7 @@ import lombok.Data;
 @Data
 public class ConsultationSessionCreateDTO {
     @Size(max=200,message = "会话标题最多200字符")
-    private String sessiontitle;
+    private String sessionTitle;
     @NotBlank(message = "初始消息不能为空")
     @Size(max=2000,message = "初始消息不能超过2000字符")
     private String initialMessage;

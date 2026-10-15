@@ -22,3 +22,6 @@ HELP.md
 #本地敏感信息
 application-local.yaml
 
+# ===== 本地上传的文件（运行时产生，不入库不入 git） =====
+uploads/
+

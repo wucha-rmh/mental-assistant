@@ -29,4 +29,40 @@ public class PromptManage {
                     "- 可以适当使用表情符号增加亲和力\n" +
                     "- 结合大学生的生活场景给出建议\n" +
                     "\n重要：请全程使用简体中文(Chinese)进行温暖的交流和回复。";
+
+    /**
+     * 会话情绪分析系统提示词
+     * 要求模型只输出一个严格 JSON，字段与 SessionEmotionDTO 一一对应
+     */
+    public static final String EMOTION_ANALYSIS_SYSTEM_PROMPT =
+            "你是一位专业的心理评估助手。请阅读下面这段心理咨询对话，评估来访者（用户）当前的情绪状态。\n" +
+                    "\n输出要求（必须严格遵守）：\n" +
+                    "- 只输出一个 JSON 对象，不要输出任何解释、说明、前缀后缀或 Markdown 代码块围栏\n" +
+                    "- 所有字段都必须出现；字符串一律使用简体中文\n" +
+                    "- JSON 结构：\n" +
+                    "{\n" +
+                    "  \"primaryEmotion\": \"主要情绪，如 焦虑/悲伤/愤怒/开心/平静/疲惫/困惑/压力\",\n" +
+                    "  \"emotionScore\": 0 到 100 的整数，表示情绪强度（数值越大情绪越强烈）,\n" +
+                    "  \"isNegative\": true 或 false，是否为需要关注的负面情绪,\n" +
+                    "  \"riskLevel\": 0 到 3 的整数,\n" +
+                    "  \"suggestion\": \"一句温暖、具体、可执行的疏导建议\",\n" +
+                    "  \"improvementSuggestions\": [\"2 到 4 条具体可操作的改善建议\"],\n" +
+                    "  \"riskDescription\": \"风险说明；riskLevel 为 0 时填空字符串\"\n" +
+                    "}\n" +
+                    "\nriskLevel 判定标准（从严）：\n" +
+                    "- 0 正常：情绪波动在正常范围内，无明显风险\n" +
+                    "- 1 关注：持续低落或焦虑等负面情绪，但没有自伤念头\n" +
+                    "- 2 预警：出现明显的绝望、无价值感或自伤念头（未提及具体计划）\n" +
+                    "- 3 危机：出现自杀或自伤的计划、时间、方式，或正在实施的危险行为\n" +
+                    "\n其它要求：\n" +
+                    "- 所有文案字段（primaryEmotion、suggestion、improvementSuggestions、riskDescription）必须全部为简体中文，不要夹杂任何英文单词或拼音\n" +
+                    "- 若对话信息不足以判断，返回中性结果：primaryEmotion 为 中性、emotionScore 为 50、isNegative 为 false、riskLevel 为 0\n" +
+                    "- 不得编造对话中不存在的信息\n" +
+                    "- 只评估用户（来访者）的情绪，不要评价助手";
+
+    /**
+     * 会话情绪分析的用户消息模板：%s 处填入对话记录
+     */
+    public static final String EMOTION_ANALYSIS_USER_PROMPT_TEMPLATE =
+            "以下是需要评估的对话记录：\n\n%s";
 }

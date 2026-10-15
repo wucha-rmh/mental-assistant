@@ -23,7 +23,10 @@ public class SecurityConfig {
             "/error",
             "/api/test",
             "/api/user/login",
-            "/api/user/register"
+            "/api/user/register",
+            "/api/user/logout",
+            // 本地上传的文件（图片）必须匿名可读：<img src> 带不了 token
+            "/files/**"
     };
     //判断是否在公开路径中
     public  static boolean isPublicPATH(String requestUrl){

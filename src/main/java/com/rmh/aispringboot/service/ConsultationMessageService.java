@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class ConsultationMessageService {
@@ -54,6 +56,27 @@ public class ConsultationMessageService {
                 .last("limit 1");
         ConsultationMessage lastMessage = consultationMessageMapper.selectOne(queryWrapper);
         return lastMessage!=null?convertToResponseDTO(lastMessage):null;
+    }
+
+    /**
+     * 查询某会话的全部消息，按时间升序（即对话的自然顺序）
+     */
+    public List<ConsultationMessageResponseDTO> listMessagesBySessionId(Long sessionId){
+        LambdaQueryWrapper<ConsultationMessage> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ConsultationMessage::getSessionId, sessionId)
+                .orderByAsc(ConsultationMessage::getCreatedAt);
+        return consultationMessageMapper.selectList(queryWrapper).stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 删除某会话的全部消息，返回删除条数（删除会话时级联清理）
+     */
+    public int deleteBySessionId(Long sessionId){
+        LambdaQueryWrapper<ConsultationMessage> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ConsultationMessage::getSessionId, sessionId);
+        return consultationMessageMapper.delete(queryWrapper);
     }
 
     private ConsultationMessageResponseDTO convertToResponseDTO(ConsultationMessage message) {

@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/user")
@@ -45,6 +46,30 @@ public class User {
         UserLoginResponseDTO.UserDetailResponseDTO user =
                 (UserLoginResponseDTO.UserDetailResponseDTO) authentication.getPrincipal();
         return Result.ok(user);
+    }
+
+    /**
+     * 上传/更换当前登录用户的头像
+     *
+     * <p>multipart/form-data，字段名 {@code file}；返回更新后的用户信息，
+     * 其中 {@code avatar} 是项目内的相对路径 {@code /files/bussiness/user_avatar/...}。
+     * 未换过头像的用户 {@code avatar} 为 null，前端回退到本地默认图。
+     */
+    @PostMapping("/avatar")
+    public Result<UserLoginResponseDTO.UserDetailResponseDTO> uploadAvatar(
+            @RequestParam("file") MultipartFile file) {
+        return Result.ok(userService.updateAvatar(file));
+    }
+
+    /**
+     * 退出登录
+     *
+     * <p>JWT 是无状态的，服务端没有 session 可销毁，本接口只用于告知前端可以清理本地凭证。
+     * 因此它被放进白名单 —— 即使 token 已过期也能正常返回，保证前端在任何情况下都能完成退出。
+     */
+    @PostMapping("/logout")
+    public Result<Void> logout() {
+        return Result.ok();
     }
 //    @GetMapping("/current")
 //    public Result<UserLoginResponseDTO.UserDetailResponseDTO> getCurrentUser(){

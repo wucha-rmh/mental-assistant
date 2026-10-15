@@ -40,12 +40,6 @@
         <main class="main-content">
             <router-view></router-view>
         </main>
-        <footer class="footer-container">
-            <div class="footer-inner">
-                <p>心理健康AI助手 · 让你的情绪被看见、被接住</p>
-                <p class="copyright">&copy; 2026 心理健康AI助手. All rights reserved.</p>
-            </div>
-        </footer>
     </div>
 </template>
 <script setup>
@@ -100,7 +94,7 @@ onMounted(() => {
 })
 </script>
 <style scoped lang="scss">
-/* 整页纵向布局，保证 footer 永远在底部（旧实现没有 flex 容器，footer 的 margin-top:auto 是无效的） */
+/* 整页纵向布局：内容撑满剩余高度（页脚已按需求移除） */
 .frontend-layout {
     display: flex;
     flex-direction: column;
@@ -228,26 +222,5 @@ onMounted(() => {
 .main-content {
     flex: 1;
     min-height: 0;
-}
-
-.footer-container {
-    margin-top: var(--mh-space-10);
-    background: var(--mh-surface);
-    border-top: 1px solid var(--mh-border);
-
-    .footer-inner {
-        max-width: var(--mh-content-max);
-        margin: 0 auto;
-        padding: var(--mh-space-6) var(--mh-space-5);
-        text-align: center;
-        color: var(--mh-text-3);
-        font-size: var(--mh-font-2);
-
-        .copyright {
-            margin-top: 4px;
-            color: var(--mh-text-3);
-            opacity: 0.8;
-        }
-    }
 }
 </style>

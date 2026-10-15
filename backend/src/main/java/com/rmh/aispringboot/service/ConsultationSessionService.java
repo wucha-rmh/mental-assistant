@@ -58,6 +58,16 @@ public class ConsultationSessionService {
     }
 
     /**
+     * 按主键查询会话（不校验归属）
+     *
+     * <p>仅供**已经做过权限判断**的调用方使用（例如管理员查看任意会话的消息）；
+     * 普通用户路径一律用 {@link #getSessionByIdAndUserId(Long, Long)}。
+     */
+    public ConsultationSession getSessionById(Long sessionId) {
+        return sessionId == null ? null : consultationSessionMapper.selectById(sessionId);
+    }
+
+    /**
      * 按「会话 ID + 用户 ID」查询会话，用于校验会话归属（防止越权访问他人会话）
      *
      * <p>用 ID + userId 双条件查询，而非先查再比对：查不到与不属于当前用户

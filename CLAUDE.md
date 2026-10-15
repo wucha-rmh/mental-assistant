@@ -95,6 +95,10 @@ mysql -uroot -p123456 mental_health_assistant < db/schema.sql
 - 白名单：`/`、`/error`、`/api/test`、`/api/user/login`、`/api/user/register`、`/api/user/logout`、`/files/**`
   - `/files/**` **必须在白名单里**：上传的图片走 `<img src>`，浏览器不会带 `token` 头，不放行就会被 401 拦掉
 - 会话类接口内部还会用 `getSessionByIdAndUserId` **校验归属**（防越权）
+  - ⚠️ **管理员例外**：`GET /api/psychological-chat/sessions/{id}/messages` 走 `PsychologicalChat.requireVisibleSessionId`，
+    管理员只校验「会话是否存在」。后台「咨询记录 → 详情」用的就是这个接口，列表接口对管理员本来就是全量 ——
+    如果给它加回归属校验，就会出现「列表看得到、点进去报『会话不存在或无权访问』」。
+    删除会话与情绪分析仍严格校验归属（管理员不能动别人的会话）。
 - **注册接口不接受 `userType`**（2026-10-15 修复提权漏洞）：请求体里带 `"userType": 2` 会被 Jackson 忽略，
   `UserConvert` 固定写 `UserType.USER.getCode()`（=1）→ 注册出来的**永远是普通用户**。加用户字段时别在注册 DTO 上开口子。
 

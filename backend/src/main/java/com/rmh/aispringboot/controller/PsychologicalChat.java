@@ -112,11 +112,15 @@ public class PsychologicalChat {
 
     /**
      * 查询某会话的完整消息记录（按时间升序）
+     *
+     * <p>这个接口被前台「我的咨询记录」与后台「咨询记录」共用：普通用户只能看自己的会话，
+     * 管理员可以打开任意用户的会话（列表接口 {@link #listSessions} 对管理员已是全量，
+     * 详情必须一致，否则出现「列表看得到、点进去说无权访问」）。
      */
     @GetMapping("/sessions/{sessionId}/messages")
     public Result<List<ConsultationMessageResponseDTO>> listMessages(@PathVariable String sessionId) {
         UserLoginResponseDTO.UserDetailResponseDTO user = currentUser();
-        Long dbSessionId = requireOwnedSessionId(sessionId, user.getId());
+        Long dbSessionId = requireVisibleSessionId(sessionId, user);
         return Result.ok(consultationMessageService.listMessagesBySessionId(dbSessionId));
     }
 
@@ -170,5 +174,26 @@ public class PsychologicalChat {
             throw new BusinessException("会话不存在或无权访问");
         }
         return dbSessionId;
+    }
+
+    /**
+     * 解析会话 ID 并校验「可见性」，返回数据库主键
+     *
+     * <p>普通用户：只能访问自己的会话，查不到与他人的会话返回同一句提示（不泄露存在性）。
+     * <p>管理员：可以访问任意会话，只校验会话是否真的存在。
+     */
+    private Long requireVisibleSessionId(String rawSessionId, UserLoginResponseDTO.UserDetailResponseDTO user) {
+        Long dbSessionId = consultationSessionService.parseSessionId(rawSessionId);
+        if (dbSessionId == null) {
+            throw new BusinessException("会话ID格式错误");
+        }
+        boolean isAdmin = user.getUserType() != null && user.getUserType() == USER_TYPE_ADMIN;
+        if (isAdmin) {
+            if (consultationSessionService.getSessionById(dbSessionId) == null) {
+                throw new BusinessException("会话不存在");
+            }
+            return dbSessionId;
+        }
+        return requireOwnedSessionId(rawSessionId, user.getId());
     }
 }

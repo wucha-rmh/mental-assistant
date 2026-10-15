@@ -136,6 +136,8 @@ POST /api/user/register      （白名单，无需 token）
 
 返回 `data`：用户详情对象（含 `id`、`username`、`userType` 等），**不含 token**。
 
+> 🔒 **请求体不接受 `userType`**（2026-10-15 修复提权漏洞）：`UserRegisterCommandDTO` 已删除该字段，客户端传 `"userType": 2` 会被 Jackson 当未知属性忽略；`service/convert/UserConvert.java` 固定写 `UserType.USER.getCode()`（=1），所以注册出来的**永远是普通用户**。响应里仍返回 `userType`/`userTypeDisplayName`，取的是库里真实值。
+
 > 可选项留空时传**空字符串**即可：`phone` 的正则是 `^$|^1[3-9]\d{9}$`（允许空串），`nickname` 允许空串。
 > 字段名**大小写敏感**（Jackson 默认不做大小写对齐），首字母写错会被静默忽略。
 
@@ -195,7 +197,7 @@ Content-Type: multipart/form-data
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `file` | file | 是 | 图片，≤ 5MB（前端限制）。后端按 `image/*` 与扩展名判定，非图片返回业务错误 |
+| `file` | file | 是 | 图片，**≤ 5MB**。上限由后端 multipart 强制（`spring.servlet.multipart.max-file-size: 5MB`），超限返回统一响应体 `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`（HTTP 200）。⚠️ 后端**没有**真实类型/扩展名白名单，只清洗扩展名字符（见 2.6） |
 
 返回 `data`：**更新后的完整用户详情**（字段同登录响应的 `userInfo`，其中 `avatar` 是项目内相对路径）。
 
@@ -505,6 +507,8 @@ GET /api/knowledge/article/{id}                             （需 token）
 另外保证 `tagArray` 是数组（供前台 `v-for` 与编辑弹窗 `tags = tagArray.join(',')` 使用）。
 查不到 → `BusinessException("文章不存在或已删除")`（`code = "BUSINESS_ERROR"`，HTTP 200）。
 
+> 📈 **阅读量自增规则（2026-10-15 起）**：本接口被前台阅读页（`api/frontend.js`）与后台编辑弹窗（`api/admin.js` ← `views/knowledge.vue`）**共用**，所以只在**阅读者不是管理员**时才计数：`KnowledgeController.articleDetail` 改调 `knowledgeService.getArticleDetailAndCountView(id)`，内部 `setSql("read_count = IFNULL(read_count, 0) + 1")` **原子自增**（避免并发覆盖），并把返回 DTO 的 `readCount` 同步 +1；管理员（后台预览/编辑）走单参 `getArticleDetail(id)`，**不计数**。实测：普通用户 GET → 库 +1 且响应同步；管理员 GET → 库不变。
+
 #### 新增 / 编辑文章（仅管理员）
 
 ```
@@ -700,6 +704,8 @@ GET /api/data-analytics/overview                             （仅管理员）
 | 鉴权 | 需要 `token`（不在白名单里） |
 | 落盘 | `file.upload-dir`（`application.yaml`，默认 `./uploads`）下按业务分目录：`ARTICLE` → `bussiness/article/`、`USER_AVATAR` → `bussiness/user_avatar/`、未识别 → `temp/`（临时文件 `is_temp=1`、`status=0`、24 小时后过期） |
 | 文件名 | `<epochMillis>-<uuid8>.<ext>`，扩展名只保留字母数字（防路径穿越），不信任客户端文件名 |
+| 大小上限 | `spring.servlet.multipart.max-file-size: 5MB` + `max-request-size: 10MB`（`application.yaml`）。超限 → `{"code":"5004","data":null,"msg":"上传的文件过大，单个文件不能超过 5MB"}`（**HTTP 200**、统一响应体，由 `common/GlobalExceptionHandler` 的 `MaxUploadSizeExceededException` 处理）。⚠️ 2026-10-15 之前没有 multipart 配置 → 走 Spring 默认 1MB，实测上传 2MB 得到 **HTTP 413 + 空响应体**（前端读不到 `msg`） |
+| 类型校验 | ⚠️ **没有**扩展名 / `Content-Type` 白名单（`FileStorageService.store` 只把扩展名清洗成字母数字）。又因为 `/files/**` 匿名可读且按静态资源直出，上传 `.html`/`.svg` 会被浏览器当页面/脚本执行 —— 接入公网前必须补白名单 |
 | 响应 | `{"id":57,"originalName":"...","filePath":"/files/bussiness/article/1792046226236-6c6d204b.svg","fileSize":871,"fileType":"IMG","businessType":"ARTICLE","businessId":"...","businessField":"cover"}` |
 | 元数据 | 同时写入 `sys_file_info`（`file_path` 存相对路径，`file_type` 取 `IMG`/`VIDEO`/`DOC`，`upload_user_id` 取当前登录用户） |
 
@@ -757,10 +763,14 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 历史图片缺失 | ✅ 已于 2026-10-15 补齐：7 篇文章的 `cover_image` 全部指向本地 `/files/bussiness/article/...`（见 2.6）；`user.avatar` 目前只有 `admin` / `tester` 有图，其余用户显示默认头像 |
 | 临时文件清理 | ✅ 已于 2026-10-15 实现（见 2.6）：`@Scheduled` 每天 03:30 清理 `is_temp=1` 且已过 `expire_time` 的文件，删磁盘 + 删 `sys_file_info` |
 | 日期时间格式 | ✅ 已于 2026-10-15 统一（见 一.5）：`LocalDateTime` 输出 `yyyy-MM-dd HH:mm:ss`（`config/JacksonConfig.java` 注册 Jackson 3 序列化器） |
-| 头像裁剪/多尺寸 | 上传的原图直接当头像，不生成缩略图；前端只限制了类型与 5MB 大小 |
+| 头像裁剪/多尺寸 | 上传的原图直接当头像，不生成缩略图；前端限制类型与 5MB，后端 multipart 也限制 5MB（见 2.6） |
 | 知识文章 / 情绪日记写操作 | ✅ 已于 2026-10-15 实现（见 2.3、2.4）：文章新增/编辑/上下架/删除、日记新增/删除 |
 | 情绪日记字段精简 | ✅ 已于 2026-10-15 完成（见 2.4）：日记只剩「心情评分 + 今日感想」，`dominantEmotion`/`emotionTriggers`/`sleepQuality`/`stressLevel` 四列已从库表到前端全部删除 |
-| 库表冗余（全库级） | 🟡 2026-10-15 整库盘点后已清理一批：DROP 废弃表 `ai_analysis_task`（14 行、11 索引、代码 0 引用）、`emotion_diary.ai_emotion_analysis`/`ai_analysis_updated_at`、`consultation_message.emotion_tag` → **9 张表精简为 8 张**、外键 8 → 7。**尚未清理**：零引用遗留表 `user_favorite`（1 行）、重复索引（`emotion_diary.idx_user_diary`＝`user_date_unique`、`user.idx_username`＝`UNIQUE username`）、空列/常量列（`knowledge_category.category_code`/`parent_id`、`consultation_message.message_type`、`knowledge_article.status`、`user.status`、`sys_file_info.file_type`/`expire_time`/`is_temp`/`status`）、半成品列 `knowledge_article.read_count`（从不自增）、`consultation_message.ai_model`（写死假值 `openai`） |
+| 库表冗余（全库级） | 🟡 2026-10-15 整库盘点后已清理一批：DROP 废弃表 `ai_analysis_task`（14 行、11 索引、代码 0 引用）、`emotion_diary.ai_emotion_analysis`/`ai_analysis_updated_at`、`consultation_message.emotion_tag` → **9 张表精简为 8 张**、外键 8 → 7。**尚未清理**：零引用遗留表 `user_favorite`（1 行）、重复索引（`emotion_diary.idx_user_diary`＝`user_date_unique`、`user.idx_username`＝`UNIQUE username`）、空列/常量列（`knowledge_category.category_code`/`parent_id`、`consultation_message.message_type`、`knowledge_article.status`、`user.status`、`sys_file_info.file_type`/`expire_time`/`is_temp`/`status`）、`consultation_message.ai_model`（写死假值 `openai`）；`knowledge_article.read_count` 从不自增 → ✅ 2026-10-15 已修（见 2.3） |
+| 数据库可重建性 | ✅ 2026-10-15 导出 `db/schema.sql`（`mysqldump --no-data`，8 张 `CREATE TABLE`，已纳入 git）。⚠️ 含 `DROP TABLE IF EXISTS`、**不含** `CREATE DATABASE`/`USE`；改完表结构要重新导出（见 `CLAUDE.md` 二） |
+| 注册提权 | ✅ 2026-10-15 修复：注册请求体不再接收 `userType`，固定建普通用户（见 2.1） |
+| 上传大小与异常兜底 | ✅ 2026-10-15：multipart 上限 1MB → 5MB、`MaxUploadSizeExceededException` 转统一响应体 `5004`、`GlobalExceptionHandler` 增补 `Exception` 兜底（见 2.6） |
+| 登录限流 / CORS / 上传类型白名单 | ⬜ 2026-10-15 缺陷审计发现的剩余项，尚未处理：登录接口公开且无限流/锁定；后端无任何 CORS 配置；上传无类型白名单且 `/files/**` 匿名可读 |
 | 前端表单校验 | `ArticleDialog.vue` 的 `handleSubmit` 原先校验不通过也照发请求（已修成 `if (!valid) return`）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 
 ---
@@ -811,6 +821,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **情绪日记精简为「心情评分 + 今日感想」**：库表 `emotion_diary` 删除 `dominant_emotion`、`emotion_triggers`、`sleep_quality`、`stress_level` 四列（列数 13 → 9，迁移前 `mysqldump` 备份到 `.db-backup/emotion_diary_before_slim_20261015-172549.sql`，另存一份 CSV 到 `.tmp-schema/`）；同步删掉 `entity/EmotionDiary.java` 的四个字段、`DTO/command/EmotionDiaryCreateCommandDTO.java` 与 `DTO/response/EmotionDiaryAdminItemDTO.java` 的对应字段、`EmotionDiaryService.saveDiary`/`toDTO` 里的读写逻辑（`grep DominantEmotion\|EmotionTriggers\|SleepQuality\|StressLevel` 在 `backend/src` 已 0 命中，`mvn -B -q compile` 通过，`DataAnalyticsService` 只读 `moodScore`/`userId`/`diaryDate` 故看板不受影响）。前端 `views/emotionDiary.vue` 删掉整个「主要情绪」卡片（8 张情绪图 + `emotionOptions`/`selectEmotion`）与睡眠/压力下拉、情绪触发因素输入，表单只剩「心情评分」+「今日感想」；`views/emotional.vue` 删掉「生活指标」列、「情绪触发因素」列与详情弹窗的对应四项。实测：新增（`id=34`）→ 200 且响应体只含三个字段、我的记录与后台分页都能查到、`moodScore=42` 仍被拦（`心情评分范围是 1-10`）、看板 overview 200、库列数 9；测试记录已删除，库回到 19 行。 |
 | 2026-10-15 | **咨询页精简：删掉「AI 助手信息框」与「情绪花园」**：`frontend/src/views/consultation.vue` 左栏只剩「会话列表」（`.session-history` 改为 `flex:1` + 最小高度 0，`.session-list` 自己滚动），右侧对话区不变（`.chat-header` 保留）；随之删除 `defaultEmotion`/`currentEmotion`/`resetEmotion`/`loadSessionEmotion`/`getIntensityClass`/`getRiskText` 与 `fetchEventSource` 的 `onclose` 收尾调用，前端**不再请求** `GET /api/psychological-chat/session/{sessionId}/emotion`（接口、缓存、落库逻辑与 `api/frontend.js#getSessionEmotion` 全部保留，见 2.2 说明；`riskLevel`/`riskDescription` 因此暂时没有界面出口）。 |
 | 2026-10-15 | **删除已废弃的「日记 AI 分析」链路**：整表 DROP `ai_analysis_task`（14 行、11 索引、代码 0 引用）；`emotion_diary` 删 `ai_emotion_analysis`/`ai_analysis_updated_at`（列数 9 → 7，`idx_ai_analysis_time` 随列消失）；`consultation_message` 删 `emotion_tag`（列数 8 → 7，全 NULL、从未写入）。库 **9 → 8 张表**、外键 8 → 7。后端 7 处（`entity/EmotionDiary`、`DTO/response/EmotionDiaryAdminItemDTO`、`EmotionDiaryService` 含整个 `normalizeAiAnalysis`、`entity/ConsultationMessage`、`ConsultationMessageResponseDTO`、`ConsultationMessageService.saveUserMessage` 签名、`PsychologicalSupportService` 两处调用）与前端 `views/emotional.vue` 6 处（「AI情绪分析结果」弹窗区块、四个 `getAi*/getRisk*` 函数、`.ai-analysis-result` 样式）同步删净；`grep aiEmotionAnalysis\|emotionTag\|normalizeAiAnalysis` 在 `backend/src` 只剩一句 javadoc 说明，`mvn -B -q compile` 通过，Vite 产物无残留标识符。**保留**：`consultation_session.last_emotion_analysis`/`last_emotion_updated_at` 与会话情绪分析整套（见 2.2）。10 项端到端实测全过：登录、会话列表、消息列表（响应已无 `emotionTag`）、会话情绪分析仍可用（`低落`/`riskLevel=1`）、后台与用户端日记分页（响应已无 ai 字段）、新增+删除日记（库回 19 行）、看板 overview、库结构核对（表 8、各表行数不变、查已删表报 `1146`、查已删列报 `1054`）。改前全库备份 `.db-backup/mental_health_assistant_full_20261015-175210.sql`。 |
+| 2026-10-15 | **缺陷审计后的第一批修复：提权 + 上传上限 + 异常兜底 + 阅读量自增 + 库结构入库**。① **注册提权**——改动前实测 `POST /api/user/register` 带 `"userType":2` 会真的建出管理员（响应 `"userType":2,"userTypeDisplayName":"管理员"`，该账号可调 `GET /api/data-analytics/overview`）；修复：`DTO/command/UserRegisterCommandDTO.java` 删掉 `userType` 字段、`service/convert/UserConvert.java` 固定 `.userType(UserType.USER.getCode())`，实测响应恒为 `userType=1`、该账号调管理接口得 `无权访问，该接口仅管理员可用`。② **上传上限 1MB → 5MB + 异常兜底**——`application.yaml` 增加 `spring.servlet.multipart.max-file-size: 5MB` / `max-request-size: 10MB`；`common/GlobalExceptionHandler.java` 新增 `MaxUploadSizeExceededException`（→ `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`，HTTP 200）与 `Exception` 兜底（→ `{"code":"500","msg":"服务器开小差了，请稍后再试"}` + `log.error`）。实测：2MB 上传由「HTTP 413 + 空响应体」变为 `code=200`；6MB 上传返回统一体 `5004` 且库里不留 `sys_file_info` 记录。③ **`read_count` 自增**（规则见 2.3）：实测普通用户读 → 15→16 且响应 `readCount=16`，管理员读 → 保持 16。④ **`db/schema.sql` 纳入仓库**（见第四节）。⑤ 顺带修掉三处隐患：`UserService.register` 里把**含明文密码**的注册体打到控制台的 `System.out.println(JSONUtil.parseObj(commandDTO))`、`login` 的 `WHERE username=? OR password=?` 误写（改为只按 `username` 查，与 `UserDetailsService` 一致）、`frontend/src/views/register.vue` 不再提交 `userType`。`mvn -B -q compile` 通过；6 组端到端实测通过（提权被拦、2MB 通过、6MB 统一报错、阅读量计数、登录的 正确/密码错/用户不存在 三种情形、清理后库回到 5 用户 / 10 文件 / 8 文章）。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。
 

@@ -4,6 +4,7 @@ import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
 import com.rmh.aispringboot.entity.User;
 import com.rmh.aispringboot.enumClass.UserStatus;
+import com.rmh.aispringboot.enumClass.UserType;
 
 import java.time.LocalDateTime;
 
@@ -51,7 +52,8 @@ public class UserConvert {
                 .phone(commandDTO.getPhone())
                 .gender(commandDTO.getGender())
                 .birthday(commandDTO.getBirthday())
-                .userType(commandDTO.getUserType())
+                // ⚠️ 注册接口一律创建普通用户，userType 不接受客户端传值（防自助提权）
+                .userType(UserType.USER.getCode())
                 .status(UserStatus.NORMAL.getCode())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())

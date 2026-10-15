@@ -1,6 +1,5 @@
 package com.rmh.aispringboot.DTO.command;
 
-import com.baomidou.mybatisplus.annotation.TableField;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -39,7 +38,6 @@ public class UserRegisterCommandDTO {
     private String nickname;
     //性别
     private Integer gender;
-    //用户类型
-    @TableField("user_type")
-    private Integer userType=1;
+    // ⚠️ 这里刻意不接收 userType：注册接口一律创建「普通用户」，
+    // 管理员账号只能由管理员在后台创建（见 UserConvert.registerCommandToEntity）。
 }

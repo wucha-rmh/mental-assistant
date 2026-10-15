@@ -78,10 +78,16 @@ public class KnowledgeController {
 
     /**
      * 文章详情（路径 id 是 UUID 字符串，不是数字）
+     *
+     * <p>这个接口被前台阅读页和后台编辑弹窗共用：只有非管理员打开时才算一次阅读，
+     * 否则管理员预览/编辑会把阅读量刷上去。
      */
     @GetMapping("/article/{id}")
     public Result<KnowledgeArticleDTO> articleDetail(@PathVariable("id") String id) {
-        return Result.ok(knowledgeService.getArticleDetail(id));
+        boolean reader = !SecurityUserUtil.isAdmin(SecurityUserUtil.currentUser());
+        return Result.ok(reader
+                ? knowledgeService.getArticleDetailAndCountView(id)
+                : knowledgeService.getArticleDetail(id));
     }
 
     /**

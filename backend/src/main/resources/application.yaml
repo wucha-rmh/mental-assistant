@@ -5,6 +5,11 @@ spring:
     password: 123456
   profiles:
     include: local
+  # 上传文件大小上限（Spring 默认只有 1MB，会让前端的「5MB 提示」名不副实）
+  servlet:
+    multipart:
+      max-file-size: 5MB      # 单个文件上限，与前端 AvatarUploader.vue / ArticleDialog.vue 的 5MB 校验一致
+      max-request-size: 10MB  # 单次请求上限
   ai:
     openai:
       chat:

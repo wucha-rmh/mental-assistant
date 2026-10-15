@@ -134,6 +134,21 @@ public class KnowledgeService {
         return toDTO(article, categoryNames, authorNames);
     }
 
+    /**
+     * 前台阅读入口：读取详情并把阅读量 +1。
+     *
+     * <p>后台编辑弹窗与文章写操作都复用 {@link #getArticleDetail(String)}，不计数；
+     * 自增走 SQL 表达式（不是「先查后写」），并发阅读不会互相覆盖。
+     */
+    public KnowledgeArticleDTO getArticleDetailAndCountView(String id) {
+        KnowledgeArticleDTO dto = getArticleDetail(id);
+        knowledgeArticleMapper.update(null, Wrappers.lambdaUpdate(KnowledgeArticle.class)
+                .eq(KnowledgeArticle::getId, id)
+                .setSql("read_count = IFNULL(read_count, 0) + 1"));
+        dto.setReadCount((dto.getReadCount() == null ? 0 : dto.getReadCount()) + 1);
+        return dto;
+    }
+
     // ── 写操作（仅管理员） ──────────────────────────────────────────
 
     /**

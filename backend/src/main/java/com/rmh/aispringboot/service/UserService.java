@@ -1,13 +1,11 @@
 package com.rmh.aispringboot.service;
 
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.rmh.aispringboot.DTO.command.UserLoginCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
 import com.rmh.aispringboot.DTO.response.FileUploadResponseDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
 import com.rmh.aispringboot.entity.User;
-import com.rmh.aispringboot.enumClass.UserType;
 import com.rmh.aispringboot.exception.BusinessException;
 import com.rmh.aispringboot.mapper.UserMapper;
 import com.rmh.aispringboot.service.convert.UserConvert;
@@ -34,12 +32,10 @@ public class UserService {
     public UserLoginResponseDTO login(UserLoginCommandDTO commandDTO)
     {
         LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(User::getUsername ,commandDTO.getUsername())
-                .or()
-                .eq(User::getPassword,commandDTO.getPassword());
+        // 只按用户名定位账号；密码交给下面的 BCrypt 比对（原先还 OR 了一次 password，属误写）
+        queryWrapper.eq(User::getUsername, commandDTO.getUsername());
 
         User user=userMapper.selectOne(queryWrapper);
-        System.out.println(user);
         if(user==null)
         {
             throw new BusinessException("用户不存在");
@@ -62,7 +58,6 @@ public class UserService {
 
     public  UserLoginResponseDTO.UserDetailResponseDTO register(UserRegisterCommandDTO commandDTO) {
 
-        System.out.println(JSONUtil.parseObj(commandDTO));
         //验证密码是否一致
         if (!commandDTO.getPassword().equals(commandDTO.getConfirmPassword())) {
             throw new BusinessException("两次输入密码不一致");
@@ -79,11 +74,7 @@ public class UserService {
         if (userMapper.selectCount(emailQuery) > 0) {
             throw new BusinessException("邮箱已经存在");
         }
-        //判断用户类型是否存在
-        if (!UserType.isValidCode(commandDTO.getUserType())) {
-            throw new BusinessException("用户类型不存在");
-        }
-        //创建用户
+        //创建用户（用户类型由 UserConvert 固定为「普通用户」，不接受客户端传值）
         String password = commandDTO.getPassword().trim();
         String encodedPassword = passwordEncoder.encode(password);
         User user = UserConvert.registerCommandToEntity(commandDTO,encodedPassword);

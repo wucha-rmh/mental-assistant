@@ -59,6 +59,21 @@ git add -A && git commit -m "..."        # 前端、后端、文档统一在根�
 > 根 `.gitignore` 忽略 `node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/`、`.tmp*`、`.idea/`；
 > `backend/.gitignore` 继续忽略 `target/`、`uploads/`、`application-local.yaml`（含 API Key）、`*.log`。详见踩坑 11。
 
+### 数据库
+
+```bash
+# 表结构快照（已纳入仓库；改表后重新导出）
+mysqldump -uroot -p123456 --no-data --skip-comments --no-tablespaces --single-transaction `
+  --routines --triggers --events --default-character-set=utf8mb4 mental_health_assistant > db/schema.sql
+
+# 用快照重建（⚠ 含 DROP TABLE IF EXISTS，会先删同名表；库要先存在）
+mysql -uroot -p123456 -e "CREATE DATABASE IF NOT EXISTS mental_health_assistant DEFAULT CHARACTER SET utf8mb4;"
+mysql -uroot -p123456 mental_health_assistant < db/schema.sql
+```
+
+> `db/schema.sql` **不含** `CREATE DATABASE` / `USE`（所以 `source` 时不会误灌到别的库），也**不含数据**。
+> 改完表结构（`ALTER TABLE`、新增实体）**必须重新导出并提交**，否则仓库与真实库会漂移。详见踩坑 13。
+
 ---
 
 ## 三、关键约定（必须遵守）
@@ -80,6 +95,8 @@ git add -A && git commit -m "..."        # 前端、后端、文档统一在根�
 - 白名单：`/`、`/error`、`/api/test`、`/api/user/login`、`/api/user/register`、`/api/user/logout`、`/files/**`
   - `/files/**` **必须在白名单里**：上传的图片走 `<img src>`，浏览器不会带 `token` 头，不放行就会被 401 拦掉
 - 会话类接口内部还会用 `getSessionByIdAndUserId` **校验归属**（防越权）
+- **注册接口不接受 `userType`**（2026-10-15 修复提权漏洞）：请求体里带 `"userType": 2` 会被 Jackson 忽略，
+  `UserConvert` 固定写 `UserType.USER.getCode()`（=1）→ 注册出来的**永远是普通用户**。加用户字段时别在注册 DTO 上开口子。
 
 ### 3. 端口与代理
 
@@ -97,6 +114,9 @@ git add -A && git commit -m "..."        # 前端、后端、文档统一在根�
 - 前端前缀：`frontend/src/config/index.js` 的 `fileBaseUrl` 是**空字符串**（同源），拼出来即 `/files/...`
 - 兜底图/默认头像：`frontend/public/img/cover-placeholder.svg`、`frontend/public/img/default-avatar.svg`
 - **不要**再引入外部图床/文件服务器的绝对地址（历史上 `159.75.169.224:1235` 那台是别人部署的另一份同项目，文件路径取不到图）
+- **单文件上限 5MB**（`spring.servlet.multipart.max-file-size: 5MB` / `max-request-size: 10MB`，2026-10-15 加；改动前走 Spring 默认 1MB，上传 2MB 会得到 **HTTP 413 + 空响应体**，见踩坑 14）。
+  超限由 `common/GlobalExceptionHandler` 转成统一响应体 `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`（HTTP 200）。
+- ⚠️ **没有类型白名单**，且 `/files/**` 匿名可读、按静态资源直出 —— 别把 `.html`/`.svg` 之类的可执行内容放上去（接入公网前必须补白名单）
 
 ### 5. 分页与 sessionId
 
@@ -290,6 +310,32 @@ curl.exe -s -X POST http://localhost:1236/api/user/login -H "Content-Type: appli
 
 **推荐一律用 `--data-binary @文件`**：既避开引号问题，也避开踩坑 1 的中文 GBK 问题。
 
+### 13. 🟡 在 pwsh 里调 `mysql.exe`：`-e` 没有默认库 + 反引号会丢，报错还被 `2>$null` 吞掉
+
+用 `mysql -uroot -p123456 -N -B -e "<SQL>"` 批量查库时踩了两次同一个坑（都表现为「静默空结果」而非报错）：
+
+- **`-e` 执行时没有默认数据库**，SQL 里必须写全限定名（`mental_health_assistant.xxx`），
+  否则报 `ERROR 1046 (3D000) No database selected`。**更省事的做法是加 `-D mental_health_assistant`**，之后表名就不用加库前缀。
+- **不要把反引号字符当成参数传给原生命令**：`$bt=[char]96` 拼出来的 `` `user` `` 在
+  `& mysql.exe ... -e "SELECT ... FROM ${bt}user${bt}"` 里**会丢掉**，SQL 变成 `FROM user` → 又回到 1046。
+  ✅ 结论：用 `-D <库名>` + **完全不写反引号**（本项目表名都不是 MySQL 保留字，`user` 也可以直接写）。
+- **别用 `2>$null` 压掉 mysql 的 stderr**：真实错误（1046/1054/1146）全在里面，压掉后只剩空字符串，
+  上层再对空值 `.Trim()` 就报 `不能对 Null 值表达式调用方法`，排查方向会被带偏。
+  改成 `2>$errFile` 并在 `$LASTEXITCODE -ne 0` 时把文件内容打出来。
+
+### 14. 🔴 上传超过限制时会返回 **HTTP 413 + 空响应体**（不是统一响应体）
+
+2026-10-15 之前 `application.yaml` 没有 `spring.servlet.multipart` 配置 → 走 Spring 默认 **1MB**。
+实测上传 2097152 字节的文件：`HTTP/1.1 413`、`Content-Length: 0`，响应头是 Spring 的
+`X-Content-Type-Options: nosniff` / `X-Frame-Options: DENY` 那一套 —— **没有 `code`/`msg`**，
+前端的 axios 拦截器读不到提示（前端自己限制 5MB，两者不一致时用户看到的是「静默失败」）。
+
+现在已把上限提到 5MB（`spring.servlet.multipart.max-file-size: 5MB` / `max-request-size: 10MB`），
+并在 `common/GlobalExceptionHandler` 里补了 `MaxUploadSizeExceededException` → `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`（HTTP 200）。
+
+> 用 curl 复现/验证要 `-F "file=@<file>;type=image/png" -F businessType=ARTICLE -F businessId=xxx`，
+> 大文件用 `[System.IO.File]::WriteAllBytes($path, (New-Object byte[] (6MB)))` 造，别用文本写入（会带 BOM 且大小不准）。
+
 ---
 
 ## 五、端到端验证流程
@@ -340,7 +386,11 @@ taskkill //F //PID <pid>
 | 前端表单校验 | 已修 `ArticleDialog.vue`（校验不通过不再发请求）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 | 文章写操作与日记写操作 | ✅ 已于 2026-10-15 实现（见 `docs/api-contract.md` 2.3 / 2.4） |
 | 情绪日记字段 | ✅ 已于 2026-10-15 精简为「心情评分 + 今日感想」：`emotion_diary` 删掉 `dominant_emotion`/`emotion_triggers`/`sleep_quality`/`stress_level` 四列（13 → 9 列），实体/DTO/服务/前台表单与后台页同步删净。**新增日记请求体只有 `diaryDate`+`moodScore`+`diaryContent`**；迁移前备份在 `.db-backup/emotion_diary_before_slim_*.sql` |
-| 库表冗余（全库级） | 🟡 2026-10-15 已清理一批：DROP 废弃表 `ai_analysis_task`（14 行、11 索引、代码 0 引用）、`emotion_diary.ai_emotion_analysis`/`ai_analysis_updated_at`、`consultation_message.emotion_tag` → **9 张表精简为 8 张**。**尚未清理**：零引用遗留表 `user_favorite`、重复索引（`emotion_diary.idx_user_diary`＝`user_date_unique`、`user.idx_username`＝`UNIQUE username`）、空列/常量列（`knowledge_category.category_code`/`parent_id`、`consultation_message.message_type`、`knowledge_article.status`、`user.status`、`sys_file_info.file_type`/`expire_time`/`is_temp`/`status`）、半成品列 `knowledge_article.read_count` 从不自增、`consultation_message.ai_model` 写死假值 `openai` |
+| 库表冗余（全库级） | 🟡 2026-10-15 已清理一批：DROP 废弃表 `ai_analysis_task`（14 行、11 索引、代码 0 引用）、`emotion_diary.ai_emotion_analysis`/`ai_analysis_updated_at`、`consultation_message.emotion_tag` → **9 张表精简为 8 张**。**尚未清理**：零引用遗留表 `user_favorite`、重复索引（`emotion_diary.idx_user_diary`＝`user_date_unique`、`user.idx_username`＝`UNIQUE username`）、空列/常量列（`knowledge_category.category_code`/`parent_id`、`consultation_message.message_type`、`knowledge_article.status`、`user.status`、`sys_file_info.file_type`/`expire_time`/`is_temp`/`status`）、`consultation_message.ai_model` 写死假值 `openai`；`knowledge_article.read_count` 从不自增 → ✅ 2026-10-15 已修（见 `docs/api-contract.md` 2.3） |
+| 数据库结构可重建 | ✅ 2026-10-15 导出 `db/schema.sql` 并纳入仓库（`mysqldump --no-data`，8 张 `CREATE TABLE`；校验方式：导进临时库比对列数/索引/外键后 DROP）。⚠️ 改表后要重新导出并提交（见二「数据库」） |
+| 注册提权 | ✅ 2026-10-15 修复：注册请求体不再接收 `userType`，固定建普通用户（见三.2） |
+| 上传上限与异常兜底 | ✅ 2026-10-15：multipart 上限 1MB → 5MB、超限返回统一响应体 `5004`、`GlobalExceptionHandler` 增补 `Exception` 兜底（见三.4） |
+| 登录限流 / CORS / 上传类型白名单 | ⬜ 2026-10-15 缺陷审计发现、尚未处理：登录接口公开且无限流/锁定；后端无任何 CORS 配置；上传无类型白名单且 `/files/**` 匿名可读 |
 | git 仓库 | ✅ 2026-10-15 起**只有一个仓库**（工作区根），`backend/` 已用 subtree 方式并入（后端原有提交历史保留），受跟踪文件 136 个；根仓库**无 remote**（未 push），旧后端 GitHub 仓库保留作归档。详见踩坑 11 |
 
 ---

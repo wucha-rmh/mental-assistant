@@ -63,8 +63,8 @@ const formData = reactive({
     "phone": "",
     "password": "",
     "confirmPassword": "",
-    "gender": 0, // 性别
-    "userType": 1 // 1为普通用户
+    "gender": 0 // 性别
+    // 不再提交 userType：注册一律创建普通用户，用户类型由后端决定
 })
 
 const validateConfirm = (rule, value, callback) => {

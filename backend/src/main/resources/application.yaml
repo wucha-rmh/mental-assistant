@@ -1,0 +1,37 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/mental_health_assistant?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+  profiles:
+    include: local
+  ai:
+    openai:
+      chat:
+        options:
+          model: deepseek-flash
+          tool-calling:
+            enabled: true
+        completions-path: /v1/chat/completions
+      base-url: https://api.deepseek.com
+
+
+
+#服务器端口
+server:
+  port: 1236
+
+
+# JWT配置
+jwt:
+  secret: MySecretKeyForJWT2025!@#$%^&*()_+SecureKeyHere
+  expiration: 86400000  # 24小时（毫秒）
+  refresh-expiration: 604800000  # 7天（毫秒）
+  header: Authorization  # token头部名称
+  token-prefix: "Bearer "  # token前缀
+
+# 本地文件存储（上传的封面/头像都留在项目内，不依赖外部文件服务器）
+file:
+  upload-dir: ./uploads  # 相对于后端工作目录，即 backend/uploads；对外访问前缀是 /files/**
+  temp-cleanup-cron: "0 30 3 * * ?"  # 过期临时文件（is_temp=1 且 expire_time 已过）的清理时间，默认每天 03:30
+

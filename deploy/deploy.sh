@@ -39,7 +39,7 @@ ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 step "1/7 安装依赖（openjdk-17 / mysql-server / nginx / curl）"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq openjdk-17-jdk-headless mysql-server nginx curl ca-certificates
+apt-get install -y -qq openjdk-17-jdk-headless mysql-server nginx curl ca-certificates openssl
 ok "依赖就绪：$(java -version 2>&1 | head -n1)"
 
 # ── 2. 用户与目录 ────────────────────────────────────────────────────────────
@@ -53,7 +53,8 @@ ok "${APP_DIR} / ${WEB_DIR} / ${ENV_FILE}"
 if [[ "${SKIP_MYSQL:-0}" != "1" ]]; then
   step "3/7 建库 ${DB_NAME} 与专用账号 ${DB_USER}@127.0.0.1"
   if [[ -z "${DB_PASSWORD}" ]]; then
-    DB_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
+    # 不用 head -c 截断：set -o pipefail 下上游可能收到 SIGPIPE 而让整个赋值失败
+    DB_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9')"
     warn "未提供 DB_PASSWORD，已随机生成，请立刻记下来：${DB_PASSWORD}"
   fi
   systemctl enable --now mysql >/dev/null 2>&1 || true

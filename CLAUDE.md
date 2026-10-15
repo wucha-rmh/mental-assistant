@@ -250,9 +250,28 @@ ERROR ... Unable to handle the Spring Security Exception because the response is
   `frontend/`、`docs/`、`CLAUDE.md`、`README.md`、根 `.gitignore` —— 根 `.gitignore` **整个忽略 `backend/`**。
 - **`backend/` 有自己的仓库**（remote `mental-health-assistant`，仓库根就在 `backend/` 里），
   后端改动要在 `backend/` 目录里单独 `git add` / `commit`。
-- ⚠️ 在**工作区根**执行 `git status` 看不到后端改动，别以为后端没改；两个仓库都还没有 remote push 配置（根仓库完全没有 remote）。
+- ⚠️ 在**工作区根**执行 `git status` 看不到后端改动，别以为后端没改。根仓库**完全没有 remote**；
+  `backend/` 有 remote `mental-health-assistant` → `https://github.com/wucha-rmh/AI-SpringBoot-mental-health-assistant.git`（本次只提交、未 push）。
 - 根 `.gitignore` 忽略了 `node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/`、`.tmp*`、`.plan-recover.txt`、`.idea/`、`.vscode/`；
   第一次 `git add -A` 是 61 个文件，**如果数字突然暴涨到上千，先检查 `node_modules` 有没有被加进来**。
+
+### 12. 🟡 在 pwsh 里用 `curl.exe` 内联 `-d '{...}'` 传 JSON：引号会被吃掉
+
+pwsh 5.1 给原生程序传参时会剥掉字符串里的双引号，于是 curl 实际发出的是
+`{username:tester,password:123456}`，Spring 解析失败 → **HTTP 400**，响应体还是 Spring 默认错误 JSON
+（`{"timestamp":...,"status":400,"error":"Bad Request",...}`，不是统一响应体）。实测对比：
+
+```
+# ❌ 400
+curl.exe -s -X POST http://localhost:1236/api/user/login -H "Content-Type: application/json" `
+  -d '{"username":"tester","password":"123456"}'
+# ✅ 200：要么把引号转义
+... -d '{\"username\":\"tester\",\"password\":\"123456\"}'
+# ✅ 要么（推荐）把 body 写进文件再引用
+... --data-binary "@D:\tmp\body.json"        # 文件用 UTF-8 无 BOM 写
+```
+
+**推荐一律用 `--data-binary @文件`**：既避开引号问题，也避开踩坑 1 的中文 GBK 问题。
 
 ---
 
@@ -303,7 +322,7 @@ taskkill //F //PID <pid>
 | 日期时间格式 | ✅ 已于 2026-10-15 统一为 `yyyy-MM-dd HH:mm:ss`（`config/JacksonConfig.java`）；⚠️ `spring.jackson.date-format` 对 `LocalDateTime` **无效**（见踩坑 10） |
 | 前端表单校验 | 已修 `ArticleDialog.vue`（校验不通过不再发请求）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 | 文章写操作与日记写操作 | ✅ 已于 2026-10-15 实现（见 `docs/api-contract.md` 2.3 / 2.4） |
-| git 仓库 | 工作区根仓库只管 `frontend/`、`docs/`、`CLAUDE.md`、`README.md`（`backend/` 保持独立仓库，见踩坑 11）；两个仓库都还没有 remote，提交要各自 `git add` |
+| git 仓库 | 工作区根仓库只管 `frontend/`、`docs/`、`CLAUDE.md`、`README.md`（`backend/` 保持独立仓库，见踩坑 11）；根仓库**无 remote**，`backend/` 有 remote `mental-health-assistant`（本次只提交、未 push），两边提交要各自 `git add` |
 
 ---
 

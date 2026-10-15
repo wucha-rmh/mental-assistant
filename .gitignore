@@ -1,12 +1,12 @@
 # ─────────────────────────────────────────────────────────────
-# 工作区根仓库（frontend/ + docs/ + CLAUDE.md + README.md）
+# 工作区根仓库（frontend/ + backend/ + docs/ + CLAUDE.md + README.md）
 #
-# backend/ 有自己独立的 git 仓库（remote: mental-health-assistant，
-# 仓库根就是 backend/ 目录），所以这里整体忽略，避免嵌套仓库被
-# 记录成一个 gitlink、也避免同一份后端代码被两个仓库重复跟踪。
-# 后端改动请进 backend/ 目录操作 git。
+# 2026-10-15 起 backend/ 已并入本仓库（subtree 方式合并，保留了后端
+# 原先的全部提交历史），原来 backend/ 里的独立 .git 已移除。
+# 后端的构建/运行产物由 backend/.gitignore 负责忽略
+# （target/、uploads/、application-local.yaml、*.log、.idea/ 等），
+# 这里不再整体忽略 backend/。
 # ─────────────────────────────────────────────────────────────
-backend/
 
 # 依赖与构建产物（frontend/.gitignore 里也有一份，这里兜底）
 node_modules/

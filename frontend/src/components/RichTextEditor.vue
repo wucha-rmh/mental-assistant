@@ -124,7 +124,7 @@ const editorConfig = reactive({
         // 基础颜色
         '#000000', '#333333', '#666666', '#999999', '#CCCCCC',
         // 治愈系主题色
-        '#4A90E2', '#7ED321', '#F5A623', '#9013FE',
+        '#4e8098', '#7fb69e', '#e0a87e', '#8a7fa8',
         // 红色系
         '#FF6B6B', '#FF4757', '#FF3838', '#FF2D2D', '#DC3545',
         // 橙色系
@@ -312,7 +312,7 @@ onBeforeUnmount(() => {
 /* 工具栏样式 */
 :deep(.w-e-toolbar) {
   border: none;
-  background: #f9fafb;
+  background: var(--mh-surface-soft);
   padding: 0.5rem;
   flex-wrap: wrap;
 }
@@ -388,7 +388,7 @@ onBeforeUnmount(() => {
 
 :deep(.w-e-color-panel .w-e-color-item:hover) {
   transform: scale(1.1);
-  border-color: #4A90E2;
+  border-color: var(--mh-primary);
   box-shadow: 0 2px 4px rgba(74, 144, 226, 0.3);
 }
 
@@ -405,12 +405,12 @@ onBeforeUnmount(() => {
 }
 
 :deep(.w-e-select-list .w-e-select-list-item:hover) {
-  background-color: #f8f9fa;
+  background-color: var(--mh-surface-soft);
 }
 
 :deep(.w-e-select-list .w-e-select-list-item.selected) {
   background-color: #e3f2fd;
-  color: #4A90E2;
+  color: var(--mh-primary);
 }
 
 :deep(.w-e-text-placeholder) {
@@ -456,12 +456,12 @@ onBeforeUnmount(() => {
 }
 
 :deep(.w-e-panel .w-e-panel-content .w-e-panel-content-font-family .w-e-panel-content-font-family-item:hover) {
-  background-color: #f8f9fa;
+  background-color: var(--mh-surface-soft);
 }
 
 :deep(.w-e-panel .w-e-panel-content .w-e-panel-content-font-family .w-e-panel-content-font-family-item.selected) {
   background-color: #e3f2fd;
-  color: #4A90E2;
+  color: var(--mh-primary);
   font-weight: 500;
 }
 
@@ -483,14 +483,14 @@ onBeforeUnmount(() => {
 }
 
 :deep(.w-e-panel .w-e-panel-content .w-e-panel-content-font-size .w-e-panel-content-font-size-item:hover) {
-  background-color: #f8f9fa;
-  border-color: #4A90E2;
+  background-color: var(--mh-surface-soft);
+  border-color: var(--mh-primary);
 }
 
 :deep(.w-e-panel .w-e-panel-content .w-e-panel-content-font-size .w-e-panel-content-font-size-item.selected) {
-  background-color: #4A90E2;
+  background-color: var(--mh-primary);
   color: white;
-  border-color: #4A90E2;
+  border-color: var(--mh-primary);
 }
 
 :deep(.w-e-select-list .selected::after) {
@@ -499,7 +499,7 @@ onBeforeUnmount(() => {
   right: 8px;
   top: 50%;
   transform: translateY(-50%);
-  color: #4A90E2;
+  color: var(--mh-primary);
   font-size: 12px;
 }
 
@@ -509,7 +509,7 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 1rem;
-  background: #f9fafb;
+  background: var(--mh-surface-soft);
   border-top: 1px solid #e5e7eb;
 }
 
@@ -535,7 +535,7 @@ onBeforeUnmount(() => {
 
 .progress-fill {
   height: 100%;
-  background: #4A90E2;
+  background: var(--mh-primary);
   transition: all 0.3s ease;
   border-radius: 2px;
 }
@@ -547,7 +547,7 @@ onBeforeUnmount(() => {
   font-size: 0.75rem;
   color: #6B7280;
   padding: 0.5rem 1rem;
-  background: #f9fafb;
+  background: var(--mh-surface-soft);
   border-top: 1px solid #e5e7eb;
 }
 

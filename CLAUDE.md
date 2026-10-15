@@ -126,6 +126,24 @@ git add -A && git commit -m "..."        # 前端、后端、文档统一在根�
 页面、浏览器标题、会话默认标题都用 **心理健康AI助手**。发现残留的旧名「宁渡AI助手」按 bug 处理直接改掉
 （2026-10-15 已在 `consultation.vue` 全部替换）。
 
+### 9. 前端样式：只用设计令牌，不要再写死颜色
+
+2026-10-15 做过一次全站 UI 统一（温和疗愈风：雾蓝 `#4e8098` 主色 + 薄荷绿 `#7fb69e` 辅色 + 杏色 `#e0a87e` 点缀 + 暖白底），
+之前全项目有 **330 处硬编码颜色 / 165 种色值 / 17 种圆角 / 22 种阴影 / 仅 1 处 @media**，现在统一到两个文件：
+
+| 文件 | 作用 |
+|---|---|
+| `frontend/src/styles/tokens.scss` | 设计令牌：颜色、圆角、阴影、间距、字号、布局尺寸，并**映射成 Element Plus 的 CSS 变量**（`--el-color-primary` 等），改这一处即可整体换肤 |
+| `frontend/src/styles/index.scss` | 全局基础样式 + Element Plus 组件微调（card / table / dialog / pagination / menu / form / empty…）+ 通用类 `.mh-page`、`.mh-card`、`.mh-section-title`、`.mh-container` |
+
+- `main.js` 的加载顺序必须是 `element-plus/dist/index.css` → `./styles/index.scss`，否则覆盖不生效。
+- **写新样式时一律用 `var(--mh-*)`**（颜色/圆角/阴影/间距/字号），不要出现新的十六进制色值；
+  `frontend/src/style.css` 只保留 reset，不要再往里面加组件样式。
+- 图表（ECharts）无法用 CSS 变量，用与令牌对应的十六进制：主色 `#4e8098`、辅色 `#7fb69e`、暖色 `#e0a87e`、info `#8a9aa3`，
+  轴/网格线用 `#d5e0e6` / `#eef3f5`，文字用 `#8a9aa3` / `#5c6b73`（见 `dashboard.vue`）。
+- 图标 PNG（`assets/images/*.png`）是**白色剪影**，必须放在有底色的容器里（KPI 卡片、头部圆形图标），别放到浅底上。
+- 页面级宽度用 `--mh-content-max`（1200px）/ 980px；`el-card` 已经是统一圆角 + 柔和阴影，不要再自己写一套。
+
 ---
 
 ## 四、踩坑记录（都是本机真实遇到过的）

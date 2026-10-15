@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-container">
+  <div class="dashboard-container" v-loading="loading">
     <el-row :gutter="20">
       <el-col :span="6">
         <el-card v-if="aiData.systemOverview">
@@ -58,9 +58,9 @@
         </el-card>
       </el-col>
     </el-row>
-    <el-row style="margin-top: 20px;" :gutter="20">
+    <el-row class="chart-row" :gutter="20">
       <el-col :span="12">
-        <el-card style="width: 100%">
+        <el-card>
           <template #header>
             <div class="card-header">
               情绪趋势分析
@@ -72,7 +72,7 @@
         </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card style="width: 100%">
+        <el-card>
           <template #header>
             <div class="card-header">
               咨询会话统计
@@ -98,7 +98,7 @@
         </el-card>
       </el-col>
     </el-row>
-    <el-row style="margin-top: 20px;">
+    <el-row class="chart-row">
       <el-card style="width: 100%">
         <template #header>
           <div class="card-header">
@@ -110,11 +110,12 @@
         </div>
       </el-card>
     </el-row>
+    <el-empty v-if="!loading && !hasData" description="暂无统计数据" />
   </div>
 </template>
 <script setup>
 import { getAnalyticsOverview } from '@/api/admin'
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as echarts from 'echarts'
 
 // 统计图片引入
@@ -124,6 +125,8 @@ const iconUrl3 = new URL('@/assets/images/comments.png', import.meta.url).href
 const iconUrl4 = new URL('@/assets/images/smile.png', import.meta.url).href
 
 const aiData = ref({})
+const loading = ref(false)
+const hasData = computed(() => !!aiData.value.systemOverview)
 
 // 初始化图标
 const initCharts = () => {
@@ -147,32 +150,28 @@ const initEmotionChart = () => {
   const TrendData = aiData.value.emotionTrend
   // 配置项
   const option = {
-    title: {
-      text: '情绪趋势分析',
-      textStyle: {
-        color: '#2d3436',
-        fontSize: 16,
-        fontWeight: 600
-      },
-      left: 'center',
-      top: 10
-    },
+    // 标题已由卡片 header 承担，图表内不再重复渲染 title
+    color: ['#7fb69e', '#4e8098'],
     tooltip: {
       trigger: 'axis',
-      borderColor: '#fab1a0',
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e6edf1',
       borderWidth: 1,
       textStyle: {
-        color: '#2d3436'
+        color: '#2f3e46'
       }
     },
     legend: {
       data: ['平均情绪评分', '记录数量'],
-      top: 40
+      top: 6,
+      textStyle: {
+        color: '#5c6b73'
+      }
     },
     grid: { // 控制容器样式
       left: '3%',
       right: '4%',
-      top: 80,
+      top: 48,
       bottom: '3%'
     },
     xAxis: {
@@ -180,27 +179,50 @@ const initEmotionChart = () => {
       data: TrendData.map(item => item.date),
       axisLine: {
         lineStyle: {
-          color: '#2d3436'
+          color: '#d5e0e6'
         }
+      },
+      axisLabel: {
+        color: '#8a9aa3'
       }
     },
     yAxis: [{
       type: 'value',
       name: '情绪评分',
       position: 'left',
+      nameTextStyle: {
+        color: '#8a9aa3'
+      },
       axisLine: {
         lineStyle: {
-          color: '#2d3436'
+          color: '#d5e0e6'
+        }
+      },
+      axisLabel: {
+        color: '#8a9aa3'
+      },
+      splitLine: {
+        lineStyle: {
+          color: '#eef3f5'
         }
       }
     }, {
       type: 'value',
       name: '记录数量',
       position: 'right',
+      nameTextStyle: {
+        color: '#8a9aa3'
+      },
       axisLine: {
         lineStyle: {
-          color: '#2d3436'
+          color: '#d5e0e6'
         }
+      },
+      axisLabel: {
+        color: '#8a9aa3'
+      },
+      splitLine: {
+        show: false
       }
     }],
     series: [{
@@ -208,12 +230,26 @@ const initEmotionChart = () => {
       type: 'line',
       data: TrendData.map(item => item.avgMoodScore),
       smooth: true,
+      symbolSize: 6,
       lineStyle: {
         width: 3,
-        color: '#faebaf'
+        color: '#7fb69e'
       },
       itemStyle: {
-        color: '#faebaf'
+        color: '#7fb69e'
+      },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(127, 182, 158, 0.28)' },
+            { offset: 1, color: 'rgba(127, 182, 158, 0.02)' }
+          ]
+        }
       }
     },
     {
@@ -221,12 +257,13 @@ const initEmotionChart = () => {
       type: 'line',
       data: TrendData.map(item => item.recordCount),
       smooth: true,
+      symbolSize: 6,
       lineStyle: {
         width: 3,
-        color: '#eeb5a3'
+        color: '#4e8098'
       },
       itemStyle: {
-        color: '#eeb5a3'
+        color: '#4e8098'
       }
     }]
   }
@@ -248,37 +285,29 @@ const initConsultationChart = () => {
   // 获取数据
   const dailyTrend = aiData.value.consultationStats.dailyTrend
   const option = {
-    title: {
-      text: '咨询活动统计',
-      textStyle: {
-        fontSize: 16,
-        fontWeight: 600,
-        color: '#2d3436'
-      },
-      left: 'center',
-      top: 10
-    },
+    // 标题由卡片 header 承担
+    color: ['#4e8098', '#7fb69e'],
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#fab1a0',
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e6edf1',
       borderWidth: 1,
       textStyle: {
-        color: '#2d3436'
+        color: '#2f3e46'
       }
     },
     legend: {
       data: ['会话数量', '参与用户数'],
-      top: 40,
+      top: 6,
       textStyle: {
-        color: '#636e72'
+        color: '#5c6b73'
       }
     },
     grid: {
       left: '3%',
       right: '4%',
       bottom: '3%',
-      top: 80,
+      top: 48,
       containLabel: true
     },
     xAxis: {
@@ -286,26 +315,26 @@ const initConsultationChart = () => {
       data: dailyTrend.map(item => item.date),
       axisLine: {
         lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
+          color: '#d5e0e6'
         }
       },
       axisLabel: {
-        color: '#636e72'
+        color: '#8a9aa3'
       }
     },
     yAxis: {
       type: 'value',
       axisLabel: {
-        color: '#636e72'
+        color: '#8a9aa3'
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
+          color: '#d5e0e6'
         }
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(244, 162, 97, 0.1)'
+          color: '#eef3f5'
         }
       }
     },
@@ -315,6 +344,7 @@ const initConsultationChart = () => {
         type: 'bar',
         data: dailyTrend.map(item => item.sessionCount),
         itemStyle: {
+          borderRadius: [6, 6, 0, 0],
           color: {
             type: 'linear',
             x: 0,
@@ -322,8 +352,8 @@ const initConsultationChart = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#74b9ff' },
-              { offset: 1, color: '#0984e3' }
+              { offset: 0, color: '#7ba3b8' },
+              { offset: 1, color: '#4e8098' }
             ]
           }
         },
@@ -334,6 +364,7 @@ const initConsultationChart = () => {
         type: 'bar',
         data: dailyTrend.map(item => item.userCount),
         itemStyle: {
+          borderRadius: [6, 6, 0, 0],
           color: {
             type: 'linear',
             x: 0,
@@ -341,8 +372,8 @@ const initConsultationChart = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: '#fdcb6e' },
-              { offset: 1, color: '#f39c12' }
+              { offset: 0, color: '#9cc8b5' },
+              { offset: 1, color: '#7fb69e' }
             ]
           }
         },
@@ -367,37 +398,29 @@ const initUserActivityChart = () => {
   // 获取数据
   const activityData = aiData.value.userActivity
   const option = {
-    title: {
-      text: '用户活跃度趋势',
-      textStyle: {
-        fontSize: 16,
-        fontWeight: 600,
-        color: '#2d3436'
-      },
-      left: 'center',
-      top: 10
-    },
+    // 标题由卡片 header 承担
+    color: ['#4e8098', '#7fb69e', '#e0a87e', '#8a9aa3'],
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#fab1a0',
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
+      borderColor: '#e6edf1',
       borderWidth: 1,
       textStyle: {
-        color: '#2d3436'
+        color: '#2f3e46'
       }
     },
     legend: {
       data: ['活跃用户', '新增用户', '日记用户', '咨询用户'],
-      top: 40,
+      top: 6,
       textStyle: {
-        color: '#636e72'
+        color: '#5c6b73'
       }
     },
     grid: {
       left: '3%',
       right: '4%',
       bottom: '3%',
-      top: 80,
+      top: 48,
       containLabel: true
     },
     xAxis: {
@@ -405,26 +428,26 @@ const initUserActivityChart = () => {
       data: activityData.map(item => item.date),
       axisLine: {
         lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
+          color: '#d5e0e6'
         }
       },
       axisLabel: {
-        color: '#636e72'
+        color: '#8a9aa3'
       }
     },
     yAxis: {
       type: 'value',
       axisLabel: {
-        color: '#636e72'
+        color: '#8a9aa3'
       },
       axisLine: {
         lineStyle: {
-          color: 'rgba(244, 162, 97, 0.3)'
+          color: '#d5e0e6'
         }
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(244, 162, 97, 0.1)'
+          color: '#eef3f5'
         }
       }
     },
@@ -434,12 +457,13 @@ const initUserActivityChart = () => {
         type: 'line',
         data: activityData.map(item => item.activeUsers),
         smooth: true,
+        symbolSize: 5,
         lineStyle: {
           width: 3,
-          color: '#a29bfe'
+          color: '#4e8098'
         },
         itemStyle: {
-          color: '#a29bfe'
+          color: '#4e8098'
         },
         areaStyle: {
           color: {
@@ -449,8 +473,8 @@ const initUserActivityChart = () => {
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(162, 155, 254, 0.4)' },
-              { offset: 1, color: 'rgba(162, 155, 254, 0.1)' }
+              { offset: 0, color: 'rgba(78, 128, 152, 0.28)' },
+              { offset: 1, color: 'rgba(78, 128, 152, 0.02)' }
             ]
           }
         }
@@ -460,12 +484,13 @@ const initUserActivityChart = () => {
         type: 'line',
         data: activityData.map(item => item.newUsers),
         smooth: true,
+        symbolSize: 5,
         lineStyle: {
           width: 3,
-          color: '#fdcb6e'
+          color: '#7fb69e'
         },
         itemStyle: {
-          color: '#fdcb6e'
+          color: '#7fb69e'
         }
       },
       {
@@ -473,12 +498,13 @@ const initUserActivityChart = () => {
         type: 'line',
         data: activityData.map(item => item.diaryUsers),
         smooth: true,
+        symbolSize: 5,
         lineStyle: {
           width: 3,
-          color: '#00b894'
+          color: '#e0a87e'
         },
         itemStyle: {
-          color: '#00b894'
+          color: '#e0a87e'
         }
       },
       {
@@ -486,12 +512,13 @@ const initUserActivityChart = () => {
         type: 'line',
         data: activityData.map(item => item.consultationUsers),
         smooth: true,
+        symbolSize: 5,
         lineStyle: {
           width: 3,
-          color: '#fab1a0'
+          color: '#8a9aa3'
         },
         itemStyle: {
-          color: '#fab1a0'
+          color: '#8a9aa3'
         }
       }
     ]
@@ -499,95 +526,123 @@ const initUserActivityChart = () => {
   userActivityChart.setOption(option)
 }
 
+// 窗口尺寸变化时重绘；组件卸载时销毁实例（旧实现两样都没有：既会挤压变形，也泄漏实例）
+const handleResize = () => {
+  emotionChart?.resize()
+  consultationChart?.resize()
+  userActivityChart?.resize()
+}
+
 onMounted(() => {
-  getAnalyticsOverview().then(res => {
-    console.log(res)
-    aiData.value = res
-    initCharts()
-  })
+  loading.value = true
+  getAnalyticsOverview()
+    .then((res) => {
+      aiData.value = res
+      initCharts()
+    })
+    .catch(() => {
+      // 失败提示已由 request.js 统一处理，这里保持空布局
+    })
+    .finally(() => {
+      loading.value = false
+    })
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  emotionChart?.dispose()
+  consultationChart?.dispose()
+  userActivityChart?.dispose()
 })
 </script>
 <style lang="scss" scoped>
 .dashboard-container {
+  .chart-row {
+    margin-top: var(--mh-space-5);
+  }
+
   .card-content {
     display: flex;
     align-items: center;
 
+    /* 图标是「白色剪影」的 PNG，所以底色必须保持中深色，只统一色相与饱和度 */
     .avatar {
-      margin-right: 12px;
-      width: 60px;
-      height: 60px;
-      border-radius: 12px;
+      flex-shrink: 0;
+      margin-right: var(--mh-space-3);
+      width: 52px;
+      height: 52px;
+      border-radius: var(--mh-radius);
       display: flex;
       align-items: center;
       justify-content: center;
 
       &.users {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #7ba3b8 0%, #4e8098 100%);
       }
 
       &.like {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        background: linear-gradient(135deg, #9cc8b5 0%, #6fae90 100%);
       }
 
       &.comments {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        background: linear-gradient(135deg, #e8c3a0 0%, #d9a05b 100%);
       }
 
       &.smile {
-        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        background: linear-gradient(135deg, #b7a9c9 0%, #8a7fa8 100%);
       }
     }
 
     .info {
+      min-width: 0;
+
+      /* ⚠️ 类名必须与模板的 class="number" 一致（旧版写成 .value，4 个 KPI 数字因此完全没样式） */
+      .number {
+        font-size: var(--mh-font-7);
+        font-weight: 700;
+        line-height: 1.2;
+        color: var(--mh-text-1);
+        margin-bottom: 2px;
+      }
+
       .title {
-        font-size: 14px;
-        color: #7f8c8d;
+        font-size: var(--mh-font-2);
+        color: var(--mh-text-3);
         margin-bottom: 4px;
       }
 
-      .value {
-        font-size: 24px;
-        font-weight: 700;
-        color: #2c3e50;
-        margin-bottom: 4px
-      }
-
       .subtitle-title {
-        font-size: 12px;
-        color: #95a5a6;
+        font-size: var(--mh-font-1);
+        color: var(--mh-text-3);
       }
     }
   }
 
+  /* 高度交给内部带 px 高度的图表容器（echarts.init 需要能测到高度）：
+     这里不要再固定 300px，更不要 canvas{height:100%!important} 把画布压扁 */
   .chart-content {
-    padding: 20px;
-    height: 300px;
+    padding: var(--mh-space-4) var(--mh-space-5) var(--mh-space-5);
     position: relative;
-
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
-    }
 
     .consultation-stats {
       display: flex;
       justify-content: space-around;
-      margin-bottom: 20px;
+      margin-bottom: var(--mh-space-4);
 
       .stat-item {
         text-align: center;
 
         .stat-label {
-          font-size: 12px;
-          color: #7f8c8d;
+          font-size: var(--mh-font-2);
+          color: var(--mh-text-3);
           margin-bottom: 4px;
         }
 
         .stat-value {
-          font-size: 18px;
+          font-size: var(--mh-font-6);
           font-weight: 600;
-          color: #2c3e50;
+          color: var(--mh-primary);
         }
       }
     }

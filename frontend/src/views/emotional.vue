@@ -1,45 +1,65 @@
 <template>
     <div>
-        <PageHead title="情绪日志" />
-        <TableSearch :formItem="formItem" @search="handleSearch" />
-        <el-table :data="tableData" style="width: 100%">
-            <el-table-column prop="id" label="用户ID" width="80" />
-            <el-table-column label="会话ID" width="80">
-                <template #default="scope">
-                    <el-avatar>{{ scope.row.nickname }}</el-avatar>
-                </template>
-            </el-table-column>
-            <el-table-column prop="diaryDate" label="记录日期" width="120" />
-            <el-table-column label="情绪评分">
-                <template #default="scope">
-                    <el-rate :model-value="scope.row.moodScore" :max="10" disabled />
-                </template>
-            </el-table-column>
-            <el-table-column label="生活指标" width="120">
-                <template #default="scope">
-                    <div>
-                        <p>
-                            睡眠：{{ scope.row.sleepQuality }} / 5
-                        </p>
-                        <p>
-                            压力：{{ scope.row.stressLevel }} / 5
-                        </p>
-                    </div>
-                </template>
-            </el-table-column>
-            <el-table-column prop="emotionTriggers" label="情绪触发因素" width="120" />
-            <el-table-column prop="diaryContent" label="日记内容" width="250" />
-            <el-table-column label="操作" width="240" fixed="right">
-                <template #default="scope">
-                    <el-button @click="viewSessionDetail(scope.row)" text type="primary">详情</el-button>
-                    <el-button @click="handleDelete(scope.row)" text type="danger">删除</el-button>
-                </template>
-            </el-table-column>
-        </el-table>
-        <el-pagination style="margin-top: 25px" :page-size="pagination.size" layout="prev, pager, next"
-            :total="pagination.total" @change="handleChange" />
+        <PageHead title="情绪日志" description="查看用户的情绪日记与 AI 情绪分析结果" />
+        <el-card class="mh-card--flush">
+            <TableSearch :formItem="formItem" @search="handleSearch" />
+            <el-table
+                v-loading="loading"
+                :data="tableData"
+                style="width: 100%"
+                empty-text="暂无情绪日记记录"
+            >
+                <el-table-column label="用户" min-width="180">
+                    <template #default="scope">
+                        <div class="user-cell">
+                            <el-avatar :size="28">{{ avatarText(scope.row.nickname) }}</el-avatar>
+                            <span class="user-name">{{ scope.row.nickname || scope.row.username || '未知用户' }}</span>
+                        </div>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="userId" label="用户ID" width="100" />
+                <el-table-column prop="diaryDate" label="记录日期" width="130" />
+                <el-table-column label="情绪评分" width="220">
+                    <template #default="scope">
+                        <el-rate :model-value="scope.row.moodScore" :max="10" disabled />
+                    </template>
+                </el-table-column>
+                <el-table-column label="生活指标" width="130">
+                    <template #default="scope">
+                        <div class="life-index">
+                            <span>睡眠 {{ scope.row.sleepQuality ?? '-' }}/5</span>
+                            <span>压力 {{ scope.row.stressLevel ?? '-' }}/5</span>
+                        </div>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="emotionTriggers" label="情绪触发因素" min-width="140" show-overflow-tooltip />
+                <el-table-column prop="diaryContent" label="日记内容" min-width="220" show-overflow-tooltip />
+                <el-table-column label="操作" width="140" fixed="right">
+                    <template #default="scope">
+                        <el-button @click="viewSessionDetail(scope.row)" text type="primary">详情</el-button>
+                        <el-button @click="handleDelete(scope.row)" text type="danger">删除</el-button>
+                    </template>
+                </el-table-column>
+            </el-table>
+            <div class="pagination-info">
+                <el-pagination
+                    v-model:current-page="pagination.currentPage"
+                    :page-size="pagination.size"
+                    :total="pagination.total"
+                    layout="total, prev, pager, next, jumper"
+                    @current-change="handleChange"
+                />
+            </div>
+        </el-card>
 
-        <el-dialog v-model="detailDialogVisible" title="情绪日志详情" width="800px" :close-on-click-modal="false">
+        <el-dialog
+            v-model="detailDialogVisible"
+            title="情绪日志详情"
+            width="760px"
+            top="6vh"
+            :close-on-click-modal="false"
+            :body-style="{ maxHeight: '68vh', overflowY: 'auto' }"
+        >
             <div class="detail-content" v-if="currentDetail">
                 <div class="detail-section">
                     <h4>用户信息</h4>
@@ -89,7 +109,9 @@
                                     :color="getEmotionScoreColor(aiData.emotionScore)" :stroke-width="8" />
                             </el-descriptions-item>
                             <el-descriptions-item label="风险等级">
-                                <el-tag :type="getAiEmotionTagType(aiData.riskLevel)">{{ aiData.riskLevel }}</el-tag>
+                                <el-tag :type="getRiskLevelTagType(aiData.riskLevel)">
+                                    {{ getRiskLevelText(aiData.riskLevel) }}
+                                </el-tag>
                             </el-descriptions-item>
                             <el-descriptions-item label="情绪性质">
                                 <el-tag :type="aiData.isNegative ? 'danger' : 'success'">{{ aiData.isNegative ? '负面情绪' :
@@ -208,27 +230,48 @@ const formItem = [
 
 // 列表
 const tableData = ref([])
-// 分页参数
+const loading = ref(false)
+// 筛选条件（用户ID / 情绪评分范围）：翻页时复用，否则翻到第 2 页筛选就丢了
+const searchForm = reactive({})
+// 分页参数（后端只认 currentPage/size，旧实现写成 current → 翻页恒返回第一页数据）
 const pagination = reactive({
-    current: 1,
+    currentPage: 1,
     size: 10,
     total: 0
 })
 
+const avatarText = (name) => (name ? String(name).slice(0, 1) : '用')
+
+const fetchList = async () => {
+    loading.value = true
+    try {
+        const params = {
+            currentPage: pagination.currentPage,
+            size: pagination.size,
+            ...searchForm
+        }
+        const { records, total } = await getEmotionalPage(params)
+        tableData.value = records || []
+        pagination.total = total || 0
+    } catch (error) {
+        tableData.value = []
+        pagination.total = 0
+    } finally {
+        loading.value = false
+    }
+}
+
 const handleChange = (page) => {
-    pagination.current = page
-    handleSearch()
+    pagination.currentPage = page
+    fetchList()
 }
 
 const handleSearch = async (formData) => {
-    const params = {
-        ...pagination,
-        ...formData
+    if (formData) {
+        Object.assign(searchForm, formData)
     }
-
-    const { records, total } = await getEmotionalPage(params)
-    tableData.value = records
-    pagination.total = total
+    pagination.currentPage = 1
+    await fetchList()
 }
 
 // 详情
@@ -238,8 +281,12 @@ const aiData = ref(null)
 const viewSessionDetail = (row) => {
     currentDetail.value = row
     if (row.aiEmotionAnalysis) {
-        aiData.value = JSON.parse(row.aiEmotionAnalysis)
-        console.log(aiData.value)
+        try {
+            aiData.value = JSON.parse(row.aiEmotionAnalysis)
+        } catch (error) {
+            // 后端约定 aiEmotionAnalysis 是合法 JSON 字符串或 null，这里兜底避免脏数据把弹窗打断
+            aiData.value = {}
+        }
     } else {
         aiData.value = {}
     }
@@ -255,48 +302,45 @@ const handleDelete = (row) => {
     }).then(() => {
         // 确认删除
         deleteEmotional(row.id).then(() => {
-            handleSearch()
+            fetchList()
         })
     })
 }
 
 onMounted(() => {
-    handleSearch()
+    fetchList()
 })
 
 </script>
 <style lang="scss" scoped>
-.detail-content {
-    .detail-section {
-        margin-bottom: 24px;
+/* 表格里的用户单元格与生活指标 */
+.user-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--mh-space-2);
 
-        h4 {
-            margin: 0 0 16px 0;
-            color: #303133;
-            font-size: 16px;
-
-            i {
-                margin-right: 8px;
-                color: #409eff;
-            }
-        }
+    .user-name {
+        color: var(--mh-text-1);
     }
 }
 
-// AI分析相关样式
-.ai-analysis-status {
-    .ai-status-tag {
-        margin-bottom: 4px;
+.life-index {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--mh-font-2);
+    color: var(--mh-text-2);
+}
 
-        i {
-            margin-right: 4px;
+.detail-content {
+    .detail-section {
+        margin-bottom: var(--mh-space-5);
+
+        h4 {
+            margin: 0 0 var(--mh-space-3) 0;
+            color: var(--mh-text-1);
+            font-size: var(--mh-font-4);
         }
-    }
-
-    .ai-analysis-preview {
-        font-size: 11px;
-        color: #909399;
-        margin-top: 2px;
     }
 }
 
@@ -306,76 +350,43 @@ onMounted(() => {
     .ai-suggestion-section,
     .ai-risk-section,
     .ai-improvements-section {
-        margin-top: 16px;
-        padding: 12px;
-        background-color: #f8f9fa;
-        border-radius: 4px;
+        margin-top: var(--mh-space-4);
+        padding: var(--mh-space-3) var(--mh-space-4);
+        background-color: var(--mh-surface-soft);
+        border-radius: var(--mh-radius-sm);
 
         h5 {
-            margin: 0 0 8px 0;
-            color: #606266;
-            font-size: 14px;
+            margin: 0 0 var(--mh-space-2) 0;
+            color: var(--mh-text-2);
+            font-size: var(--mh-font-3);
             font-weight: 600;
-
-            i {
-                margin-right: 6px;
-                color: #909399;
-            }
-        }
-    }
-
-    .keywords-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-
-        .keyword-tag {
-            background-color: #e1f3d8;
-            color: #67c23a;
-            border-color: #b3d8a4;
         }
     }
 
     .suggestion-content,
     .risk-content {
-        line-height: 1.6;
-        color: #606266;
-        background-color: white;
-        padding: 8px;
-        border-radius: 4px;
-        border: 1px solid #ebeef5;
+        line-height: var(--mh-line);
+        color: var(--mh-text-2);
+        background-color: var(--mh-surface);
+        padding: var(--mh-space-3);
+        border-radius: var(--mh-radius-sm);
+        border: 1px solid var(--mh-border);
     }
 
     .improvement-list {
         margin: 0;
-        padding-left: 20px;
+        padding-left: var(--mh-space-5);
 
         li {
             margin-bottom: 4px;
-            color: #606266;
-            line-height: 1.5;
-        }
-    }
-
-    .ai-analysis-meta {
-        margin-top: 16px;
-        padding-top: 12px;
-        border-top: 1px solid #ebeef5;
-
-        .analysis-time {
-            margin: 0;
-            font-size: 12px;
-            color: #909399;
-
-            i {
-                margin-right: 4px;
-            }
+            color: var(--mh-text-2);
+            line-height: 1.6;
         }
     }
 
     .el-progress {
         .el-progress__text {
-            font-size: 12px !important;
+            font-size: var(--mh-font-1) !important;
         }
     }
 }

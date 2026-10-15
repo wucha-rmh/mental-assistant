@@ -1,0 +1,298 @@
+@use './tokens.scss';
+
+/**
+ * 全局基础样式 + Element Plus 微调
+ *
+ * 加载顺序很重要：main.js 里必须是 `element-plus/dist/index.css` → 本文件，
+ * 这样这里的 :root 变量与组件微调才能覆盖 Element Plus 默认值。
+ * 组件内请优先用 tokens 里的变量，不要再写死颜色。
+ */
+
+/* ── 基础 ──────────────────────────────────────────────────────────── */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--mh-bg);
+  color: var(--mh-text-1);
+  font-family: var(--mh-font-family);
+  font-size: var(--mh-font-3);
+  line-height: var(--mh-line);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5 {
+  color: var(--mh-text-1);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+a {
+  color: var(--mh-primary);
+}
+
+/* 细滚动条，避免默认那种粗灰条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--mh-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--mh-border-strong);
+  border-radius: var(--mh-radius-pill);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── 通用版式工具类（页面里直接用，别再各写一套） ────────────────────── */
+.mh-page {
+  padding: var(--mh-space-6);
+  background: var(--mh-bg);
+  min-height: 100%;
+}
+
+.mh-card {
+  background: var(--mh-surface);
+  border: 1px solid var(--mh-border);
+  border-radius: var(--mh-radius);
+  box-shadow: var(--mh-shadow-sm);
+  padding: var(--mh-space-5);
+}
+
+.mh-card--flush {
+  padding: 0;
+}
+
+.mh-section-title {
+  font-size: var(--mh-font-5);
+  font-weight: 600;
+  color: var(--mh-text-1);
+  margin-bottom: var(--mh-space-4);
+}
+
+.mh-text-2 { color: var(--mh-text-2); }
+.mh-text-3 { color: var(--mh-text-3); font-size: var(--mh-font-2); }
+
+/* 页面级容器：限制内容宽度并居中（前台用） */
+.mh-container {
+  width: 100%;
+  max-width: var(--mh-content-max);
+  margin: 0 auto;
+  padding: 0 var(--mh-space-5);
+}
+
+/* ── Element Plus 微调 ────────────────────────────────────────────── */
+
+/* 卡片：去掉默认的硬边框 + 统一圆角阴影 */
+.el-card {
+  border: 1px solid var(--mh-border);
+  border-radius: var(--mh-radius);
+  box-shadow: var(--mh-shadow-sm) !important;
+  overflow: hidden;
+}
+
+.el-card__header {
+  padding: var(--mh-space-4) var(--mh-space-5);
+  border-bottom: 1px solid var(--mh-border);
+  background: var(--mh-surface);
+  font-weight: 600;
+}
+
+/* 按钮：统一圆角与过渡，主色已在 tokens 里映射 */
+.el-button {
+  border-radius: var(--mh-radius-sm);
+  font-weight: 500;
+  transition: all 0.18s ease;
+}
+
+.el-button--primary {
+  box-shadow: var(--mh-shadow-primary);
+}
+
+.el-button--primary:hover {
+  transform: translateY(-1px);
+}
+
+.el-button.is-link,
+.el-button.is-text {
+  box-shadow: none;
+}
+
+.el-button.is-link:hover,
+.el-button.is-text:hover {
+  transform: none;
+}
+
+/* 输入类控件：统一圆角与描边 */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  border-radius: var(--mh-radius-sm);
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--mh-primary) inset;
+}
+
+/* 表格：表头柔化、行高舒适、去掉重边框 */
+.el-table {
+  --el-table-border-color: var(--mh-border);
+  --el-table-header-bg-color: var(--mh-surface-soft);
+  --el-table-header-text-color: var(--mh-text-2);
+  --el-table-row-hover-bg-color: var(--mh-primary-light-9);
+  font-size: var(--mh-font-3);
+}
+
+.el-table th.el-table__cell {
+  font-weight: 600;
+  background-color: var(--mh-surface-soft);
+}
+
+.el-table .el-table__cell {
+  padding: 10px 0;
+}
+
+/* 分页：统一靠右、留白一致（替代历史上各页手写的 margin-top:25px） */
+.pagination-info {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--mh-space-4) var(--mh-space-5);
+  background-color: var(--mh-surface);
+  border-top: 1px solid var(--mh-border);
+}
+
+.el-pagination {
+  --el-pagination-button-bg-color: var(--mh-surface);
+  font-weight: 500;
+}
+
+/* 弹窗 / 抽屉：大圆角 + 柔和阴影 */
+.el-dialog {
+  border-radius: var(--mh-radius-lg);
+  box-shadow: var(--mh-shadow-lg);
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  margin-right: 0;
+  padding: var(--mh-space-5) var(--mh-space-6);
+  border-bottom: 1px solid var(--mh-border);
+  font-weight: 600;
+}
+
+.el-dialog__body {
+  padding: var(--mh-space-5) var(--mh-space-6);
+}
+
+.el-dialog__footer {
+  padding: var(--mh-space-4) var(--mh-space-6);
+  border-top: 1px solid var(--mh-border);
+}
+
+.el-drawer__header {
+  margin-bottom: 0;
+  padding: var(--mh-space-5) var(--mh-space-6);
+  border-bottom: 1px solid var(--mh-border);
+}
+
+/* 下拉 / 消息盒：统一圆角 */
+.el-dropdown__popper,
+.el-select__popper,
+.el-popper.is-light {
+  border-radius: var(--mh-radius) !important;
+}
+
+.el-dropdown-menu__item {
+  font-size: var(--mh-font-3);
+}
+
+.el-message-box {
+  border-radius: var(--mh-radius-lg);
+}
+
+.el-message {
+  border-radius: var(--mh-radius-sm);
+}
+
+/* 标签 / 头像：柔和一点 */
+.el-tag {
+  border-radius: var(--mh-radius-pill);
+  font-weight: 500;
+  border: none;
+}
+
+.el-avatar {
+  border: 1px solid var(--mh-border);
+  background: var(--mh-primary-light-9);
+}
+
+/* 空状态与加载：统一留白，避免首屏「白闪」看不出状态 */
+.el-empty {
+  padding: var(--mh-space-10) 0;
+  --el-empty-description-color: var(--mh-text-3);
+}
+
+/* 表单：标签右对齐更整齐 */
+.el-form-item__label {
+  color: var(--mh-text-2);
+  font-weight: 500;
+}
+
+/* 侧边菜单：疗愈风（浅底、圆角选中块、无硬边框） */
+.el-menu {
+  border-right: none !important;
+  background-color: transparent;
+}
+
+.el-menu-item {
+  position: relative;
+  height: 46px;
+  line-height: 46px;
+  margin: 4px 10px;
+  border-radius: var(--mh-radius-sm);
+  color: var(--mh-text-2);
+  font-weight: 500;
+}
+
+.el-menu-item:hover {
+  background-color: var(--mh-primary-light-9);
+  color: var(--mh-primary);
+}
+
+.el-menu-item.is-active {
+  background-color: var(--mh-primary-light-8);
+  color: var(--mh-primary);
+  font-weight: 600;
+}
+
+.el-menu-item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--mh-primary);
+}
+
+/* 描述列表 / 分割线 */
+.el-descriptions__label {
+  color: var(--mh-text-3);
+  font-weight: 500;
+}
+
+.el-divider {
+  border-color: var(--mh-border);
+}

@@ -2,8 +2,13 @@
     <div class="emotionDiary-container">
         <div class="header-section">
             <div class="header-content">
-                <el-image :src="iconUrl" style="width: 60px;height: 60px"></el-image>
-                <h1>情绪日志</h1>
+                <div class="header-icon">
+                    <el-image :src="iconUrl" class="header-icon-image" />
+                </div>
+                <div class="header-text">
+                    <h1>情绪日志</h1>
+                    <p>把今天的心情写下来，慢慢看见自己的情绪起伏</p>
+                </div>
             </div>
         </div>
         <div class="content">
@@ -11,9 +16,9 @@
             <div class="diary-card">
                 <div class="title">今日情绪评分</div>
                 <div class="section">
-                    <p>您今天的整体情绪状态如何？(1-10分)</p>
+                    <p>您今天的整体情绪状态如何？（1-10 分）</p>
                     <div class="rate">
-                        <el-rate 
+                        <el-rate
                             v-model="diaryForm.moodScore"
                             :texts="emotionStatus"
                             show-texts
@@ -27,9 +32,15 @@
             <div class="diary-card">
                 <div class="title">主要情绪</div>
                 <div class="emotion-grid">
-                    <div v-for="emotion in emotionOptions" :key="emotion.name" class="emotion-card" :class="{'selected': emotion.name === diaryForm.dominantEmotion}" @click="selectEmotion(emotion.name)">
-                        <el-image :src="emotion.url" style="width: 50px;height: 50px"></el-image>
-                        <div class="emotion-name">{{emotion.name}}</div>
+                    <div
+                        v-for="emotion in emotionOptions"
+                        :key="emotion.name"
+                        class="emotion-card"
+                        :class="{ 'selected': emotion.name === diaryForm.dominantEmotion }"
+                        @click="selectEmotion(emotion.name)"
+                    >
+                        <el-image :src="emotion.url" class="emotion-image" />
+                        <div class="emotion-name">{{ emotion.name }}</div>
                     </div>
                 </div>
             </div>
@@ -41,7 +52,7 @@
                         <div class="form-label">情绪触发因素</div>
                         <el-input v-model="diaryForm.emotionTriggers" placeholder="今天什么事情影响了您的情绪？" type="textarea" :rows="3" maxLength="1000" show-word-limit></el-input>
                     </div>
-                     <div class="form-group">
+                    <div class="form-group">
                         <div class="form-label">今日感想</div>
                         <el-input v-model="diaryForm.diaryContent" placeholder="写下您今天的想法、感受或发生的有趣事情..." type="textarea" :rows="5" maxLength="2000" show-word-limit></el-input>
                     </div>
@@ -49,7 +60,7 @@
                     <div class="life-indicators">
                         <div class="indicator-group">
                             <div class="form-label">睡眠质量</div>
-                           <el-select v-model="diaryForm.sleepQuality" placeholder="请选择">
+                            <el-select v-model="diaryForm.sleepQuality" placeholder="请选择">
                                 <el-option label="很差" :value="1"></el-option>
                                 <el-option label="较差" :value="2"></el-option>
                                 <el-option label="一般" :value="3"></el-option>
@@ -69,7 +80,7 @@
                         </div>
                     </div>
                     <div class="action-buttons">
-                        <el-button  @click="resetForm">重置</el-button>
+                        <el-button @click="resetForm">重置</el-button>
                         <el-button type="primary" @click="submit">提交记录</el-button>
                     </div>
                 </div>
@@ -79,7 +90,7 @@
 </template>
 <script setup>
     import { dayjs, ElMessage } from 'element-plus'
-    import { ref, reactive } from 'vue'
+    import { reactive } from 'vue'
     import { addEmotionDiary } from '@/api/frontend'
 
     // 情绪评分
@@ -101,7 +112,7 @@
         diaryForm.dominantEmotion = emotion
     }
 
-    const diaryForm = reactive({    
+    const diaryForm = reactive({
         diaryDate: dayjs().format('YYYY-MM-DD'),
         moodScore: null,
         dominantEmotion: '',
@@ -124,7 +135,6 @@
     }
 
     const submit = () => {
-        console.log(diaryForm)
         if (!diaryForm.moodScore) {
             ElMessage.error('请选择情绪评分')
             return
@@ -138,80 +148,154 @@
     const iconUrl = new URL('@/assets/images/like.png', import.meta.url).href
 </script>
 <style lang="scss" scoped>
-    .emotionDiary-container {
-    background: linear-gradient(135deg, #fafbfc 0%, #f7f9fc 50%, #f2f6fa 100%);
+.emotionDiary-container {
+    background: var(--mh-bg);
+
+    /* 头部与首页 Hero 用同一套柔和渐变 + 深色文字（旧版是黄绿→橙的高饱和渐变） */
     .header-section {
-        background: linear-gradient(135deg, #7ED321 0%, #F5A623 100%);
-        color: white;
-        padding: 48px;
+        background: linear-gradient(135deg, var(--mh-primary-light-9) 0%, var(--mh-mint-light-9) 100%);
+        border-bottom: 1px solid var(--mh-border);
+
         .header-content {
+            max-width: var(--mh-content-max);
+            margin: 0 auto;
+            padding: var(--mh-space-8) var(--mh-space-5);
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: var(--mh-space-4);
+        }
+
+        /* 图标本身是白色剪影 PNG，必须放在有底色的小圆里才看得见 */
+        .header-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--mh-primary-light-3) 0%, var(--mh-primary) 100%);
+            box-shadow: var(--mh-shadow-primary);
+
+            .header-icon-image {
+                width: 26px;
+                height: 26px;
+            }
+        }
+
+        .header-text {
+            h1 {
+                font-size: var(--mh-font-7);
+                font-weight: 700;
+                color: var(--mh-text-1);
+                margin-bottom: 4px;
+            }
+
+            p {
+                font-size: var(--mh-font-3);
+                color: var(--mh-text-2);
+            }
         }
     }
+
     .content {
+        max-width: 980px;
         margin: 0 auto;
-        width: 980px;
-        padding: 20px;
-        .diary-card {
-            margin-bottom: 20px;
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            .title {
-                margin-bottom: 20px;
-                font-size: 25px;
-                font-weight: 600;
-                color: #374151;
+        padding: var(--mh-space-6) var(--mh-space-5) var(--mh-space-8);
+    }
+
+    .diary-card {
+        margin-bottom: var(--mh-space-5);
+        background: var(--mh-surface);
+        border: 1px solid var(--mh-border);
+        border-radius: var(--mh-radius-lg);
+        padding: var(--mh-space-6);
+        box-shadow: var(--mh-shadow-sm);
+
+        .title {
+            margin-bottom: var(--mh-space-5);
+            font-size: var(--mh-font-5);
+            font-weight: 600;
+            color: var(--mh-text-1);
+        }
+
+        .section {
+            p {
+                font-size: var(--mh-font-3);
+                color: var(--mh-text-2);
+                margin-bottom: var(--mh-space-3);
             }
-            .section {
-                margin-bottom: 20px;
-                p {
-                    font-size: 15px;
-                    color: #6B7280;
-                    margin-bottom: 15px;
+        }
+
+        .emotion-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: var(--mh-space-4);
+
+            .emotion-card {
+                padding: var(--mh-space-4);
+                border: 2px solid var(--mh-border);
+                border-radius: var(--mh-radius);
+                background: var(--mh-surface-soft);
+                text-align: center;
+                cursor: pointer;
+                transition: all 0.2s ease;
+
+                &:hover {
+                    border-color: var(--mh-primary-light-5);
+                    transform: translateY(-2px);
                 }
-            }
-            .emotion-grid {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-                .emotion-card {
-                    padding: 15px;
-                    border: 2px solid #E5E7EB;
-                    border-radius: 15px;
-                    text-align: center;
-                    cursor: pointer;
-                    background: #F9FAFB;
+
+                .emotion-image {
+                    width: 48px;
+                    height: 48px;
+                }
+
+                /* 旧版这里写死 padding: 0 75px，把文字挤成一条 */
+                .emotion-name {
+                    margin-top: var(--mh-space-2);
+                    font-size: var(--mh-font-3);
+                    color: var(--mh-text-2);
+                }
+
+                &.selected {
+                    border-color: var(--mh-primary);
+                    background: var(--mh-primary-light-9);
+
                     .emotion-name {
-                        margin-top: 10px;
-                        padding: 0 75px;
-                        color: #374151;
-                    }
-                    &.selected {
-                        border-color: #7ED321;
-                        background: #F0FDF4;
-                        transform: translateY(-3px);
+                        color: var(--mh-primary);
+                        font-weight: 600;
                     }
                 }
             }
-            .detail-form {
-                .form-label {
-                    margin: 10px 0;
-                    color: #374151;
+        }
+
+        .detail-form {
+            .form-group {
+                margin-bottom: var(--mh-space-4);
+            }
+
+            .form-label {
+                margin-bottom: var(--mh-space-2);
+                font-size: var(--mh-font-3);
+                font-weight: 500;
+                color: var(--mh-text-2);
+            }
+
+            .life-indicators {
+                display: flex;
+                gap: var(--mh-space-5);
+
+                .indicator-group {
+                    flex: 1;
                 }
-                .life-indicators {
-                    display: flex;
-                    gap: 20px;
-                    .indicator-group {
-                        flex: 1;
-                    }
-                }
-                .action-buttons {
-                    margin-top: 40px
-                }
+            }
+
+            .action-buttons {
+                margin-top: var(--mh-space-6);
+                display: flex;
+                justify-content: flex-end;
+                gap: var(--mh-space-3);
             }
         }
     }

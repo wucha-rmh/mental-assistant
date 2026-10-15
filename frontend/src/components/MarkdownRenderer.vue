@@ -86,18 +86,18 @@ const renderedContent = computed(() => {
 
 .markdown-content h1 {
   font-size: 1.5em;
-  border-bottom: 2px solid #e5e7eb;
+  border-bottom: 2px solid var(--mh-border);
   padding-bottom: 0.3em;
 }
 
 .markdown-content h2 {
   font-size: 1.3em;
-  color: #374151;
+  color: var(--mh-text-1);
 }
 
 .markdown-content h3 {
   font-size: 1.1em;
-  color: #4b5563;
+  color: var(--mh-text-2);
 }
 
 .markdown-content p {
@@ -115,44 +115,44 @@ const renderedContent = computed(() => {
 }
 
 .markdown-content blockquote {
-  border-left: 4px solid #d1d5db;
+  border-left: 4px solid var(--mh-border-strong);
   padding-left: 1em;
   margin: 1em 0;
-  color: #6b7280;
+  color: var(--mh-text-3);
   font-style: italic;
-  background: #f9fafb;
+  background: var(--mh-surface-soft);
   border-radius: 0 0.5em 0.5em 0;
   padding: 0.5em 1em;
 }
 
 .ai-markdown blockquote {
-  border-left-color: #3b82f6;
-  background: #eff6ff;
+  border-left-color: var(--mh-primary);
+  background: var(--mh-primary-light-9);
 }
 
 .markdown-content hr {
   border: none;
-  border-top: 2px solid #e5e7eb;
+  border-top: 2px solid var(--mh-border);
   margin: 1.5em 0;
 }
 
 .markdown-content code.inline-code {
-  background: #f3f4f6;
+  background: var(--mh-surface-soft);
   padding: 0.2em 0.4em;
   border-radius: 0.25em;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.85em;
-  color: #e11d48;
+  color: var(--mh-danger);
 }
 
 .ai-markdown code.inline-code {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--mh-primary-light-8);
+  color: var(--mh-primary-dark-2);
 }
 
 .markdown-content pre.code-block {
-  background: #1f2937;
-  color: #f9fafb;
+  background: var(--mh-text-1);
+  color: #eef3f5;
   padding: 1em;
   border-radius: 0.5em;
   overflow-x: auto;
@@ -169,36 +169,36 @@ const renderedContent = computed(() => {
 }
 
 .markdown-content a {
-  color: #3b82f6;
+  color: var(--mh-primary);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: border-color 0.2s ease;
 }
 
 .markdown-content a:hover {
-  border-bottom-color: #3b82f6;
+  border-bottom-color: var(--mh-primary);
 }
 
 .ai-markdown a {
-  color: #1e40af;
+  color: var(--mh-primary-dark-2);
 }
 
 .ai-markdown a:hover {
-  border-bottom-color: #1e40af;
+  border-bottom-color: var(--mh-primary-dark-2);
 }
 
 .markdown-content strong {
   font-weight: 600;
-  color: #374151;
+  color: var(--mh-text-1);
 }
 
 .ai-markdown strong {
-  color: #1e40af;
+  color: var(--mh-primary-dark-2);
 }
 
 .markdown-content em {
   font-style: italic;
-  color: #6b7280;
+  color: var(--mh-text-3);
 }
 </style>
 

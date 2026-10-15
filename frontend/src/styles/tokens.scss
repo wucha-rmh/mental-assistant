@@ -1,0 +1,131 @@
+/**
+ * 心理健康AI助手 · 设计令牌（Design Tokens）
+ *
+ * 气质：温和疗愈风 —— 雾蓝为主、薄荷绿为辅、暖白打底，大圆角、柔和阴影、克制的描边。
+ * 用法：所有页面只引用这里的变量（含 Element Plus 的 CSS 变量映射），
+ *      不要再在组件里写死颜色/圆角/阴影（历史遗留的 165 种硬编码色值就是前车之鉴）。
+ */
+
+:root {
+  /* ── 主色：雾蓝（用于按钮、链接、选中态、图表主序列） ───────────────── */
+  --mh-primary: #4e8098;
+  --mh-primary-hover: #43718a;
+  --mh-primary-light-3: #7ba3b8;
+  --mh-primary-light-5: #a3c0ce;
+  --mh-primary-light-7: #cbdee6;
+  --mh-primary-light-8: #dde9ef;
+  --mh-primary-light-9: #eff5f8;
+  --mh-primary-dark-2: #3e6679;
+
+  /* ── 辅色：薄荷绿（成功、正向情绪、次要点缀） ───────────────────────── */
+  --mh-mint: #7fb69e;
+  --mh-mint-light-3: #9cc8b5;
+  --mh-mint-light-5: #b9d9cb;
+  --mh-mint-light-7: #d6eae1;
+  --mh-mint-light-8: #e5f2ec;
+  --mh-mint-light-9: #f2f8f5;
+  --mh-mint-dark-2: #66927e;
+
+  /* ── 暖色点缀：杏（提醒、情绪强度、分数高亮） ──────────────────────── */
+  --mh-warm: #e0a87e;
+  --mh-warm-light-9: #fbf4ee;
+  --mh-warm-dark-2: #c08b63;
+
+  /* ── 语义色（风险等级会用到） ──────────────────────────────────────── */
+  --mh-success: #6fae90;
+  --mh-warning: #d9a05b;
+  --mh-danger: #cf7b7b;
+  --mh-danger-light-9: #fbf1f1;
+  --mh-info: #8a9aa3;
+
+  /* ── 中性色 ───────────────────────────────────────────────────────── */
+  --mh-bg: #f6f8f9;          /* 页面底色（暖白偏冷） */
+  --mh-surface: #ffffff;     /* 卡片/容器底色 */
+  --mh-surface-soft: #fafcfd;/* 次级容器（表头、内嵌块） */
+  --mh-border: #e6edf1;      /* 常规描边 */
+  --mh-border-strong: #d5e0e6;
+  --mh-text-1: #2f3e46;      /* 标题/正文主色 */
+  --mh-text-2: #5c6b73;      /* 次要文字 */
+  --mh-text-3: #8a9aa3;      /* 辅助/占位文字 */
+  --mh-text-inverse: #ffffff;
+
+  /* ── 圆角 ─────────────────────────────────────────────────────────── */
+  --mh-radius-xs: 6px;
+  --mh-radius-sm: 8px;
+  --mh-radius: 12px;         /* 卡片默认 */
+  --mh-radius-lg: 16px;
+  --mh-radius-xl: 24px;
+  --mh-radius-pill: 999px;
+
+  /* ── 阴影（柔和，不要用高对比黑） ──────────────────────────────────── */
+  --mh-shadow-xs: 0 1px 2px rgba(47, 62, 70, 0.04);
+  --mh-shadow-sm: 0 2px 8px rgba(47, 62, 70, 0.06);
+  --mh-shadow: 0 6px 20px rgba(47, 62, 70, 0.08);
+  --mh-shadow-lg: 0 12px 32px rgba(47, 62, 70, 0.10);
+  --mh-shadow-primary: 0 6px 18px rgba(78, 128, 152, 0.22);
+
+  /* ── 间距 ─────────────────────────────────────────────────────────── */
+  --mh-space-1: 4px;
+  --mh-space-2: 8px;
+  --mh-space-3: 12px;
+  --mh-space-4: 16px;
+  --mh-space-5: 20px;
+  --mh-space-6: 24px;
+  --mh-space-8: 32px;
+  --mh-space-10: 40px;
+
+  /* ── 字号 / 行高 ──────────────────────────────────────────────────── */
+  --mh-font-1: 12px;   /* 辅助 */
+  --mh-font-2: 13px;   /* 表格、说明 */
+  --mh-font-3: 14px;   /* 正文 */
+  --mh-font-4: 16px;   /* 小标题 */
+  --mh-font-5: 18px;   /* 卡片标题 */
+  --mh-font-6: 22px;   /* 页面标题 */
+  --mh-font-7: 28px;   /* 区块大标题 */
+  --mh-font-8: 40px;   /* hero */
+  --mh-line: 1.7;
+  --mh-font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* ── 布局 ─────────────────────────────────────────────────────────── */
+  --mh-header-height: 64px;
+  --mh-aside-width: 240px;
+  --mh-aside-collapsed: 68px;
+  --mh-content-max: 1200px;
+
+  /* ══ Element Plus 变量映射（改这里就能整体换肤） ═══════════════════════ */
+  --el-color-primary: var(--mh-primary);
+  --el-color-primary-light-3: var(--mh-primary-light-3);
+  --el-color-primary-light-5: var(--mh-primary-light-5);
+  --el-color-primary-light-7: var(--mh-primary-light-7);
+  --el-color-primary-light-8: var(--mh-primary-light-8);
+  --el-color-primary-light-9: var(--mh-primary-light-9);
+  --el-color-primary-dark-2: var(--mh-primary-dark-2);
+
+  --el-color-success: var(--mh-success);
+  --el-color-success-light-9: var(--mh-mint-light-9);
+  --el-color-warning: var(--mh-warning);
+  --el-color-warning-light-9: var(--mh-warm-light-9);
+  --el-color-danger: var(--mh-danger);
+  --el-color-danger-light-9: var(--mh-danger-light-9);
+  --el-color-info: var(--mh-info);
+
+  --el-text-color-primary: var(--mh-text-1);
+  --el-text-color-regular: var(--mh-text-2);
+  --el-text-color-secondary: var(--mh-text-3);
+  --el-text-color-placeholder: var(--mh-text-3);
+  --el-border-color: var(--mh-border);
+  --el-border-color-light: var(--mh-border);
+  --el-border-color-lighter: var(--mh-border);
+  --el-fill-color-blank: var(--mh-surface);
+  --el-bg-color: var(--mh-surface);
+  --el-bg-color-page: var(--mh-bg);
+
+  --el-border-radius-base: var(--mh-radius-sm);
+  --el-border-radius-small: var(--mh-radius-xs);
+  --el-border-radius-round: var(--mh-radius-pill);
+
+  --el-font-family: var(--mh-font-family);
+  --el-font-size-base: var(--mh-font-3);
+  --el-box-shadow-light: var(--mh-shadow-sm);
+  --el-box-shadow: var(--mh-shadow);
+}

@@ -2,7 +2,9 @@
     <el-dialog
         :title="isEdit ? '编辑文章' : '新增文章'"
         v-model="dialogVisible"
-        width="50%"
+        width="720px"
+        top="6vh"
+        destroy-on-close
         @close="handleClose"
     >
         <el-form :model="formData" :rules="rules" ref="formRef" label-width="120px">
@@ -38,7 +40,7 @@
                         <img v-else :src="imgUrl" class="cover-image" alt="封面图片" />
                     </el-upload>
                     <div v-if="imgUrl" class="cover-remove">
-                        <el-button type="danger" size="mini" @click="handleRemove">移除封面</el-button>
+                        <el-button type="danger" size="small" @click="handleRemove">移除封面</el-button>
                     </div>
                 </div>
             </el-form-item>
@@ -258,12 +260,18 @@ const handleSubmit = () => {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    color: #8b949e;
-    background: #f6f8fa;
+    gap: 6px;
+    color: var(--mh-text-3);
+    background: var(--mh-surface-soft);
+    border: 1px dashed var(--mh-border-strong);
+    border-radius: var(--mh-radius-sm);
+    font-size: var(--mh-font-2);
 }
 .cover-image {
     width: 200px;
     height: 120px;
     display: block;
+    border-radius: var(--mh-radius-sm);
+    object-fit: cover;
 }
 </style>

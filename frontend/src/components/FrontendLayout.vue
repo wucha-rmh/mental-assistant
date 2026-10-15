@@ -1,45 +1,51 @@
 <template>
     <div class="frontend-layout">
-        <div class="navbar-container">
-            <div class="brand-section">
-                <el-image style="width: 50px; height: 50px" :src="iconUrl" alt="品牌logo" class="brand-logo" />
-                <h1 class="brand-name">心理健康AI助手</h1>
-            </div>
-            <div class="nav-section">
-                <router-link to="/" class="nav-link">首页</router-link>
-                <router-link to="/consultation" class="nav-link" v-if="isLoggedIn">AI咨询</router-link>
-                <router-link to="/emotion-diary" class="nav-link" v-if="isLoggedIn">情绪日记</router-link>
-                <router-link to="/knowledge" class="nav-link">知识库</router-link>
-                <el-dropdown v-if="isLoggedIn" class="user-dropdown" @command="handleCommand">
-                    <div class="user-box">
-                        <el-avatar :size="32" :src="userStore.avatar" />
-                        <span class="user-name">{{ userStore.name }}</span>
-                        <el-icon><ArrowDown /></el-icon>
+        <header class="site-header">
+            <div class="header-inner">
+                <router-link to="/" class="brand-section">
+                    <el-image class="brand-logo" :src="iconUrl" alt="心理健康AI助手" fit="cover" />
+                    <div class="brand-text">
+                        <h1 class="brand-name">心理健康AI助手</h1>
+                        <p class="brand-slogan">陪你走过每一个情绪起伏</p>
                     </div>
-                    <template #dropdown>
-                        <el-dropdown-menu>
-                            <el-dropdown-item command="avatar">更换头像</el-dropdown-item>
-                            <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-                        </el-dropdown-menu>
+                </router-link>
+                <nav class="nav-section">
+                    <router-link to="/" class="nav-link">首页</router-link>
+                    <router-link to="/knowledge" class="nav-link">知识库</router-link>
+                    <router-link to="/consultation" class="nav-link" v-if="isLoggedIn">AI 咨询</router-link>
+                    <router-link to="/emotion-diary" class="nav-link" v-if="isLoggedIn">情绪日记</router-link>
+                    <el-dropdown v-if="isLoggedIn" class="user-dropdown" @command="handleCommand">
+                        <div class="user-box">
+                            <el-avatar :size="30" :src="userStore.avatar" />
+                            <span class="user-name">{{ userStore.name }}</span>
+                            <el-icon class="arrow"><ArrowDown /></el-icon>
+                        </div>
+                        <template #dropdown>
+                            <el-dropdown-menu>
+                                <el-dropdown-item command="avatar">更换头像</el-dropdown-item>
+                                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+                            </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
+                    <template v-else>
+                        <router-link to="/auth/login" class="nav-link">登录</router-link>
+                        <router-link to="/auth/register">
+                            <el-button type="primary" round>免费注册</el-button>
+                        </router-link>
                     </template>
-                </el-dropdown>
-                <template v-else>
-                    <router-link to="/auth/login" class="nav-link">登录</router-link>
-                    <router-link to="/auth/register" class="nav-link">
-                        <el-button type="primary">注册</el-button>
-                    </router-link>
-                </template>
+                </nav>
             </div>
-        </div>
+        </header>
         <AvatarUploader ref="avatarUploader" />
-        <div class="main-content">
+        <main class="main-content">
             <router-view></router-view>
-        </div>
-        <div class="footer-container">
-            <div class="footer-bottom">
-                <p>&copy; 2026 心理健康AI助手. All rights reserved.</p>
+        </main>
+        <footer class="footer-container">
+            <div class="footer-inner">
+                <p>心理健康AI助手 · 让你的情绪被看见、被接住</p>
+                <p class="copyright">&copy; 2026 心理健康AI助手. All rights reserved.</p>
             </div>
-        </div>
+        </footer>
     </div>
 </template>
 <script setup>
@@ -94,76 +100,153 @@ onMounted(() => {
 })
 </script>
 <style scoped lang="scss">
+/* 整页纵向布局，保证 footer 永远在底部（旧实现没有 flex 容器，footer 的 margin-top:auto 是无效的） */
 .frontend-layout {
-    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: var(--mh-bg);
+}
 
-    .navbar-container {
-        max-width: 1200px;
-        height: 100%;
-        margin: 0 auto;
-        padding: 10px;
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--mh-border);
+}
+
+.header-inner {
+    max-width: var(--mh-content-max);
+    height: 68px;
+    margin: 0 auto;
+    padding: 0 var(--mh-space-5);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--mh-space-6);
+
+    .brand-section {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        gap: var(--mh-space-3);
+        min-width: 0;
 
-        .brand-section {
-            display: flex;
-            align-items: center;
+        .brand-logo {
+            width: 42px;
+            height: 42px;
+            border-radius: var(--mh-radius-sm);
+            flex-shrink: 0;
+        }
 
-            .brand-name {
-                margin-left: 10px;
-                font-size: 24px;
+        .brand-text {
+            min-width: 0;
+        }
+
+        .brand-name {
+            font-size: var(--mh-font-4);
+            font-weight: 600;
+            color: var(--mh-text-1);
+            line-height: 1.2;
+        }
+
+        .brand-slogan {
+            font-size: var(--mh-font-1);
+            color: var(--mh-text-3);
+            line-height: 1.4;
+        }
+    }
+
+    .nav-section {
+        display: flex;
+        align-items: center;
+        gap: var(--mh-space-5);
+
+        .nav-link {
+            position: relative;
+            color: var(--mh-text-2);
+            font-size: var(--mh-font-3);
+            font-weight: 500;
+            padding: 6px 2px;
+            transition: color 0.18s ease;
+
+            &:hover {
+                color: var(--mh-primary);
+            }
+
+            /* 当前所在页高亮（旧实现没有选中态） */
+            &.router-link-exact-active,
+            &.router-link-active {
+                color: var(--mh-primary);
                 font-weight: 600;
-                color: #333;
+            }
+
+            &.router-link-exact-active::after,
+            &.router-link-active::after {
+                content: '';
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: -2px;
+                height: 2px;
+                border-radius: 2px;
+                background: var(--mh-primary);
             }
         }
 
-        .nav-section {
-            display: flex;
-            align-items: center;
-            gap: 40px;
+        .user-dropdown {
+            cursor: pointer;
+            outline: none;
 
-            .nav-link {
-                color: #4b5563;
-                font-size: 16px;
-                font-weight: 500;
+            .user-box {
+                display: flex;
+                align-items: center;
+                gap: var(--mh-space-2);
+                padding: 4px 10px 4px 4px;
+                border-radius: var(--mh-radius-pill);
+                transition: background 0.18s ease;
 
                 &:hover {
-                    color: #4A90E2;
+                    background: var(--mh-primary-light-9);
                 }
-            }
 
-            .user-dropdown {
-                cursor: pointer;
-                outline: none;
-
-                .user-box {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    color: #4b5563;
-                    font-size: 16px;
+                .user-name {
+                    font-size: var(--mh-font-2);
                     font-weight: 500;
+                    color: var(--mh-text-2);
+                }
 
-                    &:hover {
-                        color: #4A90E2;
-                    }
+                .arrow {
+                    color: var(--mh-text-3);
                 }
             }
         }
     }
+}
 
-    .footer-container {
-        background: #1f2937;
-        color: white;
-        padding: 15px 0;
-        margin-top: auto;
+.main-content {
+    flex: 1;
+    min-height: 0;
+}
 
-        .footer-bottom {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 10px;
-            text-align: center;
+.footer-container {
+    margin-top: var(--mh-space-10);
+    background: var(--mh-surface);
+    border-top: 1px solid var(--mh-border);
+
+    .footer-inner {
+        max-width: var(--mh-content-max);
+        margin: 0 auto;
+        padding: var(--mh-space-6) var(--mh-space-5);
+        text-align: center;
+        color: var(--mh-text-3);
+        font-size: var(--mh-font-2);
+
+        .copyright {
+            margin-top: 4px;
+            color: var(--mh-text-3);
+            opacity: 0.8;
         }
     }
 }

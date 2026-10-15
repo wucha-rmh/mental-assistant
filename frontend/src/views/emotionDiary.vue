@@ -15,6 +15,14 @@
             <!-- 情绪评分 -->
             <div class="diary-card">
                 <div class="title">今日情绪评分</div>
+                <!-- 同一天只保留一条：把「会更新而不是新增」这件事明确说出来，避免误以为被覆盖 -->
+                <div v-if="todayDiary" class="today-hint">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>
+                        你今天（{{ todayDiary.diaryDate }}）已经记录过一篇了，保存会<strong>更新这一篇</strong>，不会新增；
+                        上次更新于 {{ todayDiary.updatedAt }}
+                    </span>
+                </div>
                 <div class="section">
                     <p>您今天的整体情绪状态如何？（1-10 分）</p>
                     <div class="rate">
@@ -81,7 +89,9 @@
                     </div>
                     <div class="action-buttons">
                         <el-button @click="resetForm">重置</el-button>
-                        <el-button type="primary" @click="submit">提交记录</el-button>
+                        <el-button type="primary" @click="submit">
+                            {{ todayDiary ? '更新今日记录' : '提交记录' }}
+                        </el-button>
                     </div>
                 </div>
             </div>
@@ -108,6 +118,7 @@
                             <span v-if="item.emotionTriggers">触发因素：{{ item.emotionTriggers }}</span>
                             <span v-if="item.sleepQuality">睡眠 {{ item.sleepQuality }}/5</span>
                             <span v-if="item.stressLevel">压力 {{ item.stressLevel }}/5</span>
+                            <span v-if="item.updatedAt && item.updatedAt !== item.createdAt">最后更新 {{ item.updatedAt }}</span>
                             <el-button
                                 v-if="item.diaryContent && item.diaryContent.length > 80"
                                 text
@@ -164,16 +175,39 @@
         stressLevel: null
     })
 
-    const resetForm = () => {
+    // 今天已有的那条记录（后端按 (user_id, diary_date) 唯一：一天一条，重复提交=更新今天这条）
+    const todayDiary = ref(null)
+
+    const emptyForm = () => ({
+        diaryDate: dayjs().format('YYYY-MM-DD'),
+        moodScore: null,
+        dominantEmotion: '',
+        emotionTriggers: '',
+        diaryContent: '',
+        sleepQuality: null,
+        stressLevel: null
+    })
+
+    // 把某条记录回填到表单（用于「编辑今天这条」）
+    const fillForm = (item) => {
         Object.assign(diaryForm, {
-            diaryDate: dayjs().format('YYYY-MM-DD'),
-            moodScore: null,
-            dominantEmotion: '',
-            emotionTriggers: '',
-            diaryContent: '',
-            sleepQuality: null,
-            stressLevel: null
+            diaryDate: item.diaryDate,
+            moodScore: item.moodScore,
+            dominantEmotion: item.dominantEmotion || '',
+            emotionTriggers: item.emotionTriggers || '',
+            diaryContent: item.diaryContent || '',
+            sleepQuality: item.sleepQuality ?? null,
+            stressLevel: item.stressLevel ?? null
         })
+    }
+
+    // 重置：有今天的记录就恢复成已保存的内容，否则清空
+    const resetForm = () => {
+        if (todayDiary.value) {
+            fillForm(todayDiary.value)
+        } else {
+            Object.assign(diaryForm, emptyForm())
+        }
     }
 
     const submit = () => {
@@ -181,9 +215,13 @@
             ElMessage.error('请选择情绪评分')
             return
         }
-        addEmotionDiary(diaryForm).then(() => {
-            ElMessage.success('提交成功')
-            resetForm()
+        addEmotionDiary(diaryForm).then((saved) => {
+            ElMessage.success(todayDiary.value ? '今日记录已更新' : '提交成功')
+            // 后端返回的就是落库后的那条：用它同步「今天是否已记录」与表单内容
+            if (saved) {
+                todayDiary.value = saved
+                fillForm(saved)
+            }
             // 提交后回到列表第一页，立刻能看到刚才写的那一篇
             listPage.value = 1
             fetchDiaryList()
@@ -198,12 +236,34 @@
     const listTotal = ref(0)
     const expandedIds = ref([])
 
+    // 只在首次加载时用「今天那条」回填表单，避免用户正在输入时被列表刷新覆盖
+    let formPrefilled = false
+
+    /**
+     * 同步「今天是否已记录」。
+     * 列表按 diaryDate 倒序，今天那条（若有）必然在第 1 页，所以只有第 1 页的结果才是有效依据，
+     * 否则翻到第 2 页会把提示错误地清掉。
+     */
+    const syncTodayDiary = (records, page) => {
+        if (page !== 1) return
+        const today = dayjs().format('YYYY-MM-DD')
+        const found = (records || []).find(item => item.diaryDate === today) || null
+        todayDiary.value = found
+        if (!formPrefilled) {
+            formPrefilled = true
+            if (found) {
+                fillForm(found)
+            }
+        }
+    }
+
     const fetchDiaryList = () => {
         listLoading.value = true
         getMyEmotionDiaries({ pageNum: listPage.value, pageSize: listSize })
             .then(res => {
                 diaryList.value = (res && res.records) || []
                 listTotal.value = (res && res.total) || 0
+                syncTodayDiary(diaryList.value, listPage.value)
             })
             .catch(() => {
                 diaryList.value = []
@@ -367,6 +427,31 @@
                     font-size: var(--mh-font-2);
                     color: var(--mh-text-3);
                 }
+            }
+        }
+
+        /* 「今天已经记录过」提示条：明确告知保存＝更新而不是新增 */
+        .today-hint {
+            display: flex;
+            align-items: flex-start;
+            gap: var(--mh-space-2);
+            padding: var(--mh-space-3) var(--mh-space-4);
+            margin-bottom: var(--mh-space-4);
+            background: var(--mh-primary-light-9);
+            border: 1px solid var(--mh-primary-light-7);
+            border-radius: var(--mh-radius);
+            font-size: var(--mh-font-2);
+            line-height: 1.7;
+            color: var(--mh-text-2);
+
+            .el-icon {
+                margin-top: 3px;
+                color: var(--mh-primary);
+                flex-shrink: 0;
+            }
+
+            strong {
+                color: var(--mh-primary);
             }
         }
 

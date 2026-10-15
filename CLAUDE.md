@@ -394,6 +394,60 @@ Spring 属性源优先级：**命令行参数 > OS 环境变量 > profile 专属
   `Caused by: java.lang.IllegalStateException: jwt.secret 未配置或长度不足 32 位…`（实测 120s 内进程退出）。
   ⚠️ 注意 Windows 下把环境变量设成**空串等于删掉它**（会退回配置文件的值），要用一个「长度不足」的非空值来做这个测试。
 
+### 17. 🔴 `npm run build` 卡在 esbuild 的临时二进制上（`Access is denied`）
+
+esbuild 0.27.2（`frontend/node_modules/esbuild/lib/main.js:2096`）每次启动都把二进制释放到
+`path.join(os.tmpdir(), 'esbuild-<随机 hex>')`，构建结束再删掉它；**`%TEMP%` 在工作区之外时就删不掉**，于是构建在
+`✓ 2163 modules transformed` 之后以
+`[vite:esbuild-transpile] remove C:\Users\<用户>\AppData\Local\Temp\esbuild-…: Access is denied` 整体失败。
+
+**对策：把 TEMP/TMP 指到工作区内的目录再构建**（`.tmp*` 已被 gitignore）：
+
+```cmd
+mkdir D:\mental_health_assistant\.tmp-build
+set "TEMP=D:\mental_health_assistant\.tmp-build"
+set "TMP=%TEMP%"
+npm run build
+```
+
+⚠️ 在**沙箱内**的 pwsh 里只改 `$env:TEMP` 不够：会变成 `Error: spawn EPERM`（命名管道 stdio 限制，与 ACL 无关），
+必须用一次性 `danger-full-access` 提权才构建得动（实测提权 + 工作区 TEMP → `✓ built in 7.00s`）。
+产物 `frontend/dist` 39 个文件 / 3.67 MB，**已被 gitignore，构建完要单独上传服务器**。
+
+### 18. 🔴 部署实战：profile 专属配置文件会压掉 `application.yaml` 里的环境变量占位符
+
+`application.yaml` 写的是 `password: ${DB_PASSWORD:}`、`secret: ${JWT_SECRET:}`。但 **`application-local.yaml` 是
+profile 专属配置源，优先级高于 `application.yaml`**，而 `mvn package` 会把 `src/main/resources/**` 一起塞进 jar，
+于是服务器上出现一个非常反直觉的现象（2026-10-15 实测，排查了一小时）：
+
+- `spring.datasource.username` / `url` 用 **环境变量** 替换占位符 → `mha` ✅
+- `spring.datasource.password` 却用了 **jar 里那份 `application-local.yaml` 的本机口令** ❌
+  → `Caused by: java.sql.SQLException: Access denied for user 'mha'@'localhost' (using password: YES)`
+
+**根因**：占位符（`${DB_PASSWORD:}`）是属性源**合并之后**才解析的，合并时 profile 专属文件已经赢过
+`application.yaml`；而 `systemEnvironment` 里根本没有 `spring.datasource.password` 这个键（只有 `DB_PASSWORD`，
+它只存在于 `application.yaml` 的占位符里）。所以 **只有名字直接对应属性的变量才真正赢**：
+`JWT_SECRET` → `jwt.secret`（relaxed binding，所以 JWT 侧一直正常），`SPRING_DATASOURCE_PASSWORD` → 数据源口令。
+⚠️ 二「环境变量与本地配置」里「生产只设环境变量就能覆盖」那句，仅对**同名**变量成立。
+
+**服务器上必配（`/etc/mha/mha.env`）**：
+
+```
+JWT_SECRET=…                 # 名字直接对应 jwt.secret
+DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD   # 被 application.yaml 的占位符取用
+SPRING_DATASOURCE_USERNAME=mha            # ← 这两个才是压住 jar 内 profile 文件的关键
+SPRING_DATASOURCE_PASSWORD=<同 DB_PASSWORD>
+SPRING_AI_OPENAI_API_KEY=sk-…             # 否则会用打包时混进 jar 的本机 Key
+```
+
+**根治**：上线 jar 用 `mvn -B package -DskipTests -Pprod`（`backend/pom.xml` 新增 `prod` profile 排除
+`application-local.yaml`）。⚠️ 该排除只对干净的 `target/classes` 生效，本机 `mvn clean` 又被 ACE 挡住
+（踩坑 0/二），需要时先手工删 `backend/target/classes/application-local.yaml` 再 package。二者都做最稳。
+
+> 同一场排查里顺带确认的两件事：① MySQL 把来自 `127.0.0.1` 的连接**反解成主机名 `localhost`**，
+> 建号时必须 `'mha'@'127.0.0.1'` 和 `'mha'@'localhost'` 两个 host 都建（`deploy/deploy.sh` 已改）；
+> ② **FinalShell 粘贴多行会丢换行**，所以发给用户的服务器命令一律写成单行（`;` 分隔），带 `\` 续行的一律不要用。
+
 ---
 
 ## 五、端到端验证流程

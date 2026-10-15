@@ -91,7 +91,11 @@ ss -lntp | grep 3306                                            # 期望 127.0.0
 
 ```bash
 cd backend
-mvn -B clean package -DskipTests        # 本机若因 target 的 ACE 报 clean 失败，见第 10 节
+mvn -B clean package -DskipTests -Pprod   # 本机若因 target 的 ACE 报 clean 失败，见第 10 节
+# ✅ 上线的 jar **一定要带 -Pprod**：该 profile 会把 application-local.yaml（本机口令/Key）排除在 jar 之外，
+#    否则它会盖掉服务器上的环境变量（2026-10-15 实测踩到 Access denied for user 'mha'@'localhost'，见 3.3 与第 10 节）。
+#    排除只对干净的 target/classes 生效 —— 本机 mvn clean 被 ACE 挡住时，先手工删
+#    backend/target/classes/application-local.yaml 再 package（或按 3.3 把变量配全，两者都做最稳）。
 # 产物：backend/target/application-0.0.1-SNAPSHOT.jar  →  上传后重命名为 app.jar
 ```
 
@@ -110,6 +114,10 @@ DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USERNAME=mha
 DB_PASSWORD=<第 2 节设的数据库口令>
+# ⚠️ 下面两行是「按属性名直连」的别名，必须和上面同值 —— 原因见下面的优先级说明：
+#    若 jar 里混进了 application-local.yaml，占据位符的 DB_PASSWORD 会被它盖掉，只有这两个能赢。
+SPRING_DATASOURCE_USERNAME=mha
+SPRING_DATASOURCE_PASSWORD=<同 DB_PASSWORD>
 SPRING_AI_OPENAI_API_KEY=sk-xxx
 ```
 
@@ -121,6 +129,12 @@ sudo chmod 600 /etc/mha/mha.env && sudo chown mha:mha /etc/mha/mha.env
 > 仓库里的 `application.yaml` **不含任何口令**（只有 `${JWT_SECRET:}`、`${DB_PASSWORD:}` 这类占位符），
 > 所以生产环境根本不需要 `application-local.yaml`。少配 `JWT_SECRET`（或少于 32 位）后端会**拒绝启动**，
 > 这是故意的：历史上真实的密钥和 MySQL `root` 口令曾提交进 git。
+>
+> 🔴 **但「环境变量 > application-local.yaml」这条只管名字直接对应的变量**（`JWT_SECRET` → `jwt.secret`）：
+> `application.yaml` 里的 `${DB_PASSWORD:}` 是**占位符**，占位符解析发生在属性源合并**之后**，
+> 所以 profile 专属的 `application-local.yaml` 一旦被打进 jar，它的 `spring.datasource.password` 会盖掉服务器
+> 环境变量里的 `DB_PASSWORD`（实测就是 `Access denied for user 'mha'@'localhost' (using password: YES)`）。
+> 两个保险都要上：打包用 `-Pprod` 排除该文件 **且** 在 env 里同时写 `SPRING_DATASOURCE_USERNAME/PASSWORD`。
 
 **3.4 systemd 托管**
 

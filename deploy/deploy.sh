@@ -51,7 +51,7 @@ ok "${APP_DIR} / ${WEB_DIR} / ${ENV_FILE}"
 
 # ── 3. 数据库 ────────────────────────────────────────────────────────────────
 if [[ "${SKIP_MYSQL:-0}" != "1" ]]; then
-  step "3/7 建库 ${DB_NAME} 与专用账号 ${DB_USER}@127.0.0.1"
+  step "3/7 建库 ${DB_NAME} 与专用账号 ${DB_USER}@127.0.0.1 / localhost"
   if [[ -z "${DB_PASSWORD}" ]]; then
     # 不用 head -c 截断：set -o pipefail 下上游可能收到 SIGPIPE 而让整个赋值失败
     DB_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9')"
@@ -59,9 +59,15 @@ if [[ "${SKIP_MYSQL:-0}" != "1" ]]; then
   fi
   systemctl enable --now mysql >/dev/null 2>&1 || true
   mysql -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
-  mysql -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASSWORD}';"
-  mysql -e "ALTER USER '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASSWORD}';"
-  mysql -e "GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'127.0.0.1'; FLUSH PRIVILEGES;"
+  # ⚠️ 必须同时建 127.0.0.1 与 localhost 两个 host：
+  #    MySQL 默认会反向解析客户端 IP，从本机 TCP 连上来时看到的主机名是 localhost，
+  #    只建 '127.0.0.1' 会报 “Access denied for user 'xxx'@'localhost' (using password: YES)”（实测踩过）。
+  for HOST in '127.0.0.1' 'localhost'; do
+    mysql -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'${HOST}' IDENTIFIED BY '${DB_PASSWORD}';"
+    mysql -e "ALTER USER '${DB_USER}'@'${HOST}' IDENTIFIED BY '${DB_PASSWORD}';"
+    mysql -e "GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'${HOST}';"
+  done
+  mysql -e "FLUSH PRIVILEGES;"
 
   TABLES="$(mysql -N -B -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${DB_NAME}';")"
   if [[ "${TABLES}" == "0" ]]; then

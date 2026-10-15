@@ -146,4 +146,30 @@
 		</plugins>
 	</build>
 
+	<!--
+		上线打包：mvn -B package -DskipTests -Pprod
+		⚠️ 上线的 jar 必须用 -Pprod：src/main/resources/application-local.yaml 里带着本机数据库口令、
+		DeepSeek Key、jwt.secret，而「profile 专属配置文件」的优先级高于 application.yaml 里的
+		${DB_PASSWORD:} 占位符 —— 一旦打进 jar，服务器上的环境变量会被它盖掉（2026-10-15 实测踩到：
+		Caused by: java.sql.SQLException: Access denied for user 'mha'@'localhost' (using password: YES)）。
+		⚠️ 该排除只对干净的 target/classes 生效：本机 mvn clean 被继承来的 ACE 挡住，需要时先手工删
+		backend/target/classes/application-local.yaml 再 package。
+		本机开发不受影响（mvn -B spring-boot:run 不加 -Pprod，照旧读该文件）。
+	-->
+	<profiles>
+		<profile>
+			<id>prod</id>
+			<build>
+				<resources>
+					<resource>
+						<directory>src/main/resources</directory>
+						<excludes>
+							<exclude>application-local.yaml</exclude>
+						</excludes>
+					</resource>
+				</resources>
+			</build>
+		</profile>
+	</profiles>
+
 </project>

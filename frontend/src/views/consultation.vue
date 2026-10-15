@@ -213,6 +213,9 @@ const iconUrl = new URL('@/assets/images/robot-fill.png', import.meta.url).href
 const iconUrl1 = new URL('@/assets/images/like.png', import.meta.url).href
 const iconUrl2 = new URL('@/assets/images/users.png', import.meta.url).href
 
+/** 记住「上次正在看的会话」，刷新后据此恢复（存的是 session_12 这种带前缀的 id） */
+const LAST_SESSION_KEY = 'consultation_last_session'
+
 // 新建会话
 const createNewFrontendSession = () => {
     // AI 正在流式回复时不允许切换，否则旧流的内容会继续追加到新会话里
@@ -231,6 +234,8 @@ const createNewFrontendSession = () => {
     messages.value = []
     userMessage.value = ''
     resetEmotion()
+    // 主动新建的会话不参与「刷新恢复」，刷新后仍然是一个干净的新会话
+    localStorage.removeItem(LAST_SESSION_KEY)
 }
 
 // 定义一个当前会话对象
@@ -373,6 +378,8 @@ const startNewSession = (message) => {
             // 否则，创建一个新的会话
             currentSession.value = sessionData
        }
+       // 会话已经落库，记住它：这样在会话里刷新页面也能回到这段对话
+       localStorage.setItem(LAST_SESSION_KEY, sessionData.sessionId)
        // 更新会话列表
        getSessionPage()
 
@@ -483,13 +490,15 @@ const handleError = (message) => {
 }
 
 const getSessionPage = () => {
-    getSessionList({
+    return getSessionList({
         pageNum: 1,
         pageSize: 10
     }).then(res => {
         sessionList.value = (res && res.records) || []
+        return sessionList.value
     }).catch(() => {
         sessionList.value = []
+        return []
     })
 }
 
@@ -509,6 +518,8 @@ const handleSessionClick = (session) => {
         sessionTitle: session.sessionTitle
     }
     currentSession.value = sessionData
+    // 记住当前会话，刷新后回到这里（而不是回到新会话）
+    localStorage.setItem(LAST_SESSION_KEY, sessionData.sessionId)
 }
 
 const handleDeleteSession = (sessionId) => {
@@ -519,6 +530,11 @@ const handleDeleteSession = (sessionId) => {
     }).then(() => {
         deleteSession(sessionId).then(() => {
             ElMessage.success('删除成功')
+            // 删掉的正好是当前查看的会话 → 回到新会话，并清掉刷新用的记录
+            if (localStorage.getItem(LAST_SESSION_KEY) === `session_${sessionId}`) {
+                localStorage.removeItem(LAST_SESSION_KEY)
+                createNewFrontendSession()
+            }
             getSessionPage()
         }).catch(() => {
             // 失败提示已由 request.js 统一处理
@@ -533,11 +549,39 @@ const formatMessageContent = (content) => {
     return content.replace(/\n/g, '<br>')
 }
 
-onMounted(() => {
-    // 初始化时获取会话列表
-    getSessionPage()
-    // 初始化时创建一个新会话
-    createNewFrontendSession()
+/**
+ * 刷新后恢复上次正在看的会话。
+ * 拿不到记录、或那条会话已被删除/不属于当前用户时，退回新会话。
+ */
+const restoreLastSession = async () => {
+    const lastSessionId = localStorage.getItem(LAST_SESSION_KEY)
+    if (!lastSessionId) {
+        createNewFrontendSession()
+        return
+    }
+
+    const numericId = lastSessionId.toString().replace('session_', '')
+    try {
+        const history = await getSessionDetail(numericId)
+        messages.value = history || []
+        const matched = sessionList.value.find(item => `session_${item.id}` === lastSessionId)
+        currentSession.value = {
+            sessionId: lastSessionId,
+            status: 'ACTIVE',
+            sessionTitle: matched?.sessionTitle || '心理健康AI助手'
+        }
+        loadSessionEmotion(lastSessionId)
+    } catch (error) {
+        // 会话不存在或无权访问：清掉记录，回到新会话
+        localStorage.removeItem(LAST_SESSION_KEY)
+        createNewFrontendSession()
+    }
+}
+
+onMounted(async () => {
+    // 先拿会话列表（左侧列表 + 恢复时用于取标题），再决定停在哪
+    await getSessionPage()
+    restoreLastSession()
 })
 </script>
 <style scoped lang="scss">

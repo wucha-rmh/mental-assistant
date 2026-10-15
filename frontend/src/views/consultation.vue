@@ -1,68 +1,6 @@
 <template>
     <div class="consultation-container">
         <div class="sidebar">
-            <!-- AI助手信息 -->
-             <div class="ai-assistant-info">
-                <div class="breathing-circle">
-                    <el-image :src="iconUrl" style="width: 25px;height:25px" alt="AI助手" />
-                </div>
-                <h3 class="assistant-name">心理健康AI助手</h3>
-                <div class="online-status">
-                    <div class="status-dot"></div>
-                    在线服务中
-                </div>
-             </div>
-             <!-- 情绪花园 -->
-             <div class="emotion-garden">
-                <div class="garden-header">
-                    <div class="garden-title"> 情绪花园 </div>
-                </div>
-                <div class="emotion-info" :class="{ negative: currentEmotion.isNegative }">
-                    <div class="emotion-name">{{ currentEmotion.primaryEmotion }}</div>
-                    <div class="emotion-score">{{ currentEmotion.emotionScore }}</div>
-                </div>
-                <div class="warm-tips">
-                    <div class="emotion-status-text">
-                        <span class="status-label">今天感觉</span>
-                        <span class="status-emotion" :class="currentEmotion.isNegative ? 'is-negative' : 'is-positive'">
-                            {{ currentEmotion.isNegative ? '需要关注' : '很不错' }}
-                        </span>
-                    </div>
-                    <div class="emotion-intensity">
-                        <span class="intensity-dots">
-                            <span v-for="dot in 3" :key="dot" class="dot" :class="{'active': getIntensityClass(currentEmotion.emotionScore) >= dot}"></span>
-                        </span>                        <span class="intensity-text">
-                            {{ getRiskText(currentEmotion.riskLevel) }}
-                        </span>
-                    </div>
-                    <!-- 温暖建议卡片 -->
-                     <div class="warm-suggestion" v-if="currentEmotion.suggestion">
-                        <div class="suggestion-icon">💝</div>
-                        <div class="suggestion-content">
-                            <div class="suggestion-title">给你的小建议</div>
-                            <div class="suggestion-text">{{ currentEmotion.suggestion }}</div>
-                        </div>
-                     </div>
-                     <!-- 治愈行动 -->
-                      <div class="healing-actions" v-if="currentEmotion.improvementSuggestions.length > 0">
-                        <div class="actions-title">治愈小行动</div>
-                        <div class="actions-list">
-                            <div v-for="action in currentEmotion.improvementSuggestions" :key="action" class="action-item">
-                                <div class="action-icon">✨</div>
-                                <div class="action-text">{{ action }}</div>
-                            </div>
-                        </div>
-                      </div>
-                      <!-- 风险提示 -->
-                    <div class="risk-notice" v-if="currentEmotion.isNegative && currentEmotion.riskLevel > 1">
-                        <div class="notice-icon">🤗</div>
-                        <div class="notice-content">
-                            <div class="notice-title">温馨提示</div>
-                            <div class="notice-text">{{ currentEmotion.riskDescription }}</div>
-                        </div>
-                    </div>
-                </div>
-             </div>
              <!-- 会话列表 -->
              <div class="session-history">
                 <h4 class="section-title">会话列表</h4>
@@ -203,7 +141,7 @@
 </template>
 <script setup>
 import { computed, ref, onMounted } from 'vue'
-import { startSession, getSessionList, deleteSession, getSessionDetail, getSessionEmotion } from '@/api/frontend'
+import { startSession, getSessionList, deleteSession, getSessionDetail } from '@/api/frontend'
 import { dayjs, ElMessage, ElMessageBox } from 'element-plus'
 import { ChatRound, DeleteFilled } from '@element-plus/icons-vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
@@ -223,7 +161,7 @@ const createNewFrontendSession = () => {
         ElMessage.warning('AI 正在回复中，请稍候再新建会话')
         return
     }
-    // 关键：切回「尚未创建（TEMP）」状态的同时必须清空消息列表与情绪面板。
+    // 关键：切回「尚未创建（TEMP）」状态的同时必须清空消息列表。
     // 旧实现只改了 currentSession，屏幕上的旧消息还在，所以看起来「点了没反应」；
     // 刷新页面后 messages 本来就是空的，才像是「冒出一个新会话」。
     currentSession.value = {
@@ -233,7 +171,6 @@ const createNewFrontendSession = () => {
     }
     messages.value = []
     userMessage.value = ''
-    resetEmotion()
     // 主动新建的会话不参与「刷新恢复」，刷新后仍然是一个干净的新会话
     localStorage.removeItem(LAST_SESSION_KEY)
 }
@@ -249,71 +186,11 @@ const userMessage = ref('')
 // 定义AI助手是否正在输入
 const isAiTyping = ref(false)
 
-// 情绪花园（默认值集中在一处：接口失败或字段缺失时，模板里的插值与 .length 都不会报错）
-const defaultEmotion = {
-    primaryEmotion: '中性',
-    emotionScore: 50,
-    isNegative: false,
-    riskLevel: 0,
-    suggestion: '情绪状态平稳',
-    riskDescription: '',
-    improvementSuggestions: []
-}
-const currentEmotion = ref({ ...defaultEmotion })
-
-// 把情绪面板恢复成「未分析」状态（新建会话、还没生成分析结果时用）
-const resetEmotion = () => {
-    currentEmotion.value = { ...defaultEmotion }
-}
-
 // 当前是不是一个还没落库的新会话（TEMP）：用于给用户「新建成功」的即时反馈
 const isTempSession = computed(() => currentSession.value?.status === 'TEMP')
 
-const loadSessionEmotion = (sessionId) => {
-   // 确保sessionID格式正确
-    const id = sessionId.toString().startsWith('session_') ? sessionId : `session_${sessionId}`
-
-    getSessionEmotion(id).then(res => {
-        if (res) {
-            // 与默认值合并，保证 improvementSuggestions 始终是数组
-            currentEmotion.value = {
-                ...defaultEmotion,
-                ...res,
-                improvementSuggestions: res.improvementSuggestions || []
-            }
-        }
-    }).catch(() => {
-        // 失败提示已由 request.js 统一处理，这里保留面板原值
-    })
-}
-
 // 当前正在查看的会话高亮（旧实现里 .active 这个类名从未被绑定过）
 const isActiveSession = (session) => currentSession.value?.sessionId === `session_${session.id}`
-
-const getIntensityClass = (score) => {
-    if (score >= 61) {
-        return 3
-    }
-    if (score >= 31) {
-        return 2
-    }
-    return 1
-}
-
-const getRiskText = (level) => {
-    switch (level) {
-        case 0:
-            return '正常'
-        case 1:
-            return '关注'
-        case 2:
-            return '预警'
-        case 3:
-            return '危机'
-        default:
-            return '正常'
-    }
-}
 
 // 定义处理键盘事件：Enter 发送、Shift+Enter 换行（输入框下方的提示文案就是这个意思，旧实现按了没反应）
 const handleKeyDown = (e) => {
@@ -466,12 +343,6 @@ const startAIResponse = (sessionId, userMessage) => {
             if (err && err.name === 'AbortError') return
             handleError(err && err.message ? err.message : 'AI回复失败，请重试')
             throw err
-        },
-        onclose: () => {
-            // 流结束（正常或异常）后刷新一次情绪分析
-            if (currentSession.value && currentSession.value.sessionId) {
-                loadSessionEmotion(currentSession.value.sessionId)
-            }
         }
     })
 
@@ -510,7 +381,6 @@ const handleSessionClick = (session) => {
     }).catch(() => {
         messages.value = []
     })
-    loadSessionEmotion(session.id)
     // 更新当前会话对象数据
     const sessionData = {
         sessionId: "session_" + session.id,
@@ -570,7 +440,6 @@ const restoreLastSession = async () => {
             status: 'ACTIVE',
             sessionTitle: matched?.sessionTitle || '心理健康AI助手'
         }
-        loadSessionEmotion(lastSessionId)
     } catch (error) {
         // 会话不存在或无权访问：清掉记录，回到新会话
         localStorage.removeItem(LAST_SESSION_KEY)
@@ -609,296 +478,17 @@ onMounted(async () => {
     gap: var(--mh-space-4);
 }
 
-/* AI 助手信息卡 */
-.ai-assistant-info {
-    background: var(--mh-surface);
-    border: 1px solid var(--mh-border);
-    border-radius: var(--mh-radius-lg);
-    box-shadow: var(--mh-shadow-sm);
-    padding: var(--mh-space-5) var(--mh-space-4);
-    text-align: center;
-
-    .breathing-circle {
-        width: 56px;
-        height: 56px;
-        margin: 0 auto var(--mh-space-3);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, var(--mh-primary-light-3) 0%, var(--mh-primary) 100%);
-        box-shadow: var(--mh-shadow-primary);
-        animation: breathing 4s ease-in-out infinite;
-    }
-
-    .assistant-name {
-        font-size: var(--mh-font-4);
-        font-weight: 600;
-        color: var(--mh-text-1);
-        margin: 0 0 var(--mh-space-2);
-    }
-
-    .online-status {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        font-size: var(--mh-font-1);
-        font-weight: 600;
-        color: var(--mh-mint-dark-2);
-
-        .status-dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background: var(--mh-mint);
-            animation: pulse 2s infinite;
-        }
-    }
-}
-
-/* 情绪花园 */
-.emotion-garden {
-    background: linear-gradient(160deg, var(--mh-warm-light-9) 0%, #f7f4ef 100%);
-    border: 1px solid var(--mh-border);
-    border-radius: var(--mh-radius-lg);
-    box-shadow: var(--mh-shadow-sm);
-    padding: var(--mh-space-4);
-
-    .garden-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: var(--mh-space-4);
-
-        .garden-title {
-            font-size: var(--mh-font-4);
-            font-weight: 600;
-            color: var(--mh-warm-dark-2);
-        }
-    }
-
-    /* 白字压在中等饱和度底色上，对比度足够（旧版是白字压浅粉渐变，几乎看不清） */
-    .emotion-info {
-        width: 84px;
-        height: 84px;
-        margin: 0 auto var(--mh-space-4);
-        border-radius: 50%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: #fff;
-        border: 3px solid rgba(255, 255, 255, 0.85);
-        box-shadow: var(--mh-shadow-sm);
-        background: linear-gradient(135deg, var(--mh-mint-light-3) 0%, var(--mh-mint-dark-2) 100%);
-
-        &.negative {
-            background: linear-gradient(135deg, var(--mh-warm) 0%, var(--mh-warm-dark-2) 100%);
-        }
-
-        .emotion-name {
-            font-size: var(--mh-font-3);
-            font-weight: 600;
-            line-height: 1.2;
-        }
-
-        .emotion-score {
-            font-size: var(--mh-font-5);
-            font-weight: 700;
-            line-height: 1.1;
-        }
-    }
-
-    .warm-tips {
-        text-align: center;
-
-        .emotion-status-text {
-            margin-bottom: var(--mh-space-3);
-
-            .status-label {
-                font-size: var(--mh-font-3);
-                color: var(--mh-text-3);
-                margin-right: 6px;
-            }
-
-            .status-emotion {
-                display: inline-block;
-                padding: 3px 12px;
-                border-radius: var(--mh-radius-pill);
-                font-size: var(--mh-font-3);
-                font-weight: 600;
-
-                &.is-positive {
-                    color: var(--mh-mint-dark-2);
-                    background: var(--mh-mint-light-8);
-                }
-
-                &.is-negative {
-                    color: var(--mh-warm-dark-2);
-                    background: var(--mh-warm-light-9);
-                }
-            }
-        }
-
-        .emotion-intensity {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--mh-space-2);
-            margin-bottom: var(--mh-space-4);
-
-            .intensity-dots {
-                display: flex;
-                gap: 4px;
-
-                .dot {
-                    width: 8px;
-                    height: 8px;
-                    border-radius: 50%;
-                    background: var(--mh-border-strong);
-                    transition: all 0.25s ease;
-
-                    &.active {
-                        background: var(--mh-warm);
-                        transform: scale(1.15);
-                    }
-                }
-            }
-
-            .intensity-text {
-                font-size: var(--mh-font-2);
-                font-weight: 500;
-                color: var(--mh-text-2);
-            }
-        }
-
-        .warm-suggestion,
-        .healing-actions,
-        .risk-notice {
-            text-align: left;
-        }
-
-        .warm-suggestion {
-            display: flex;
-            align-items: flex-start;
-            gap: var(--mh-space-3);
-            padding: var(--mh-space-3);
-            margin-bottom: var(--mh-space-3);
-            background: rgba(255, 255, 255, 0.9);
-            border: 1px solid var(--mh-border);
-            border-radius: var(--mh-radius);
-            box-shadow: var(--mh-shadow-xs);
-
-            .suggestion-icon {
-                font-size: 18px;
-                line-height: 1.2;
-                flex-shrink: 0;
-            }
-
-            .suggestion-content {
-                flex: 1;
-                min-width: 0;
-
-                .suggestion-title {
-                    font-size: var(--mh-font-3);
-                    font-weight: 600;
-                    color: var(--mh-text-1);
-                    margin-bottom: 4px;
-                }
-
-                .suggestion-text {
-                    font-size: var(--mh-font-2);
-                    line-height: 1.7;
-                    color: var(--mh-text-2);
-                }
-            }
-        }
-
-        .healing-actions {
-            margin-bottom: var(--mh-space-3);
-
-            .actions-title {
-                font-size: var(--mh-font-3);
-                font-weight: 600;
-                color: var(--mh-text-1);
-                margin-bottom: var(--mh-space-2);
-            }
-
-            .actions-list {
-                display: flex;
-                flex-direction: column;
-                gap: var(--mh-space-2);
-
-                .action-item {
-                    display: flex;
-                    align-items: flex-start;
-                    gap: var(--mh-space-2);
-                    padding: var(--mh-space-2) var(--mh-space-3);
-                    background: rgba(255, 255, 255, 0.9);
-                    border: 1px solid var(--mh-border);
-                    border-radius: var(--mh-radius-sm);
-                    box-shadow: var(--mh-shadow-xs);
-
-                    .action-icon {
-                        font-size: 13px;
-                        flex-shrink: 0;
-                    }
-
-                    .action-text {
-                        flex: 1;
-                        font-size: var(--mh-font-2);
-                        line-height: 1.6;
-                        color: var(--mh-text-2);
-                    }
-                }
-            }
-        }
-
-        .risk-notice {
-            display: flex;
-            align-items: flex-start;
-            gap: var(--mh-space-3);
-            padding: var(--mh-space-3);
-            background: var(--mh-warm-light-9);
-            border: 1px solid var(--mh-warm);
-            border-radius: var(--mh-radius);
-
-            .notice-icon {
-                font-size: 18px;
-                line-height: 1.2;
-                flex-shrink: 0;
-            }
-
-            .notice-content {
-                flex: 1;
-                min-width: 0;
-                text-align: left;
-
-                .notice-title {
-                    font-size: var(--mh-font-3);
-                    font-weight: 600;
-                    color: var(--mh-warm-dark-2);
-                    margin-bottom: 4px;
-                }
-
-                .notice-text {
-                    font-size: var(--mh-font-2);
-                    line-height: 1.7;
-                    color: var(--mh-text-2);
-                }
-            }
-        }
-    }
-}
-
-/* 会话列表 */
+/* 会话列表（左栏现在只剩这一块，让它占满 sidebar 并自己滚动） */
 .session-history {
     background: var(--mh-surface);
     border: 1px solid var(--mh-border);
     border-radius: var(--mh-radius-lg);
     box-shadow: var(--mh-shadow-sm);
     padding: var(--mh-space-4);
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 
     .section-title {
         font-size: var(--mh-font-4);
@@ -911,6 +501,9 @@ onMounted(async () => {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        overflow-y: auto;
+        min-height: 0;
+        padding-right: 4px;
 
         .no-sessions-text {
             text-align: center;

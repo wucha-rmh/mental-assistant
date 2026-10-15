@@ -329,7 +329,7 @@ taskkill //F //PID <pid>
 
 | 项 | 说明 |
 |---|---|
-| 情绪分析 | ✅ 已接入 AI（`AiService/EmotionAnalysisService.java`）：结果落 `consultation_session.last_emotion_analysis`，缓存覆盖最后一条消息时复用、有新消息则重算；无消息或调用失败退回 `SessionEmotionDTO.defaultValue()` 且不写缓存 |
+| 情绪分析 | ✅ 已接入 AI（`AiService/EmotionAnalysisService.java`）：结果落 `consultation_session.last_emotion_analysis`，缓存覆盖最后一条消息时复用、有新消息则重算；无消息或调用失败退回 `SessionEmotionDTO.defaultValue()` 且不写缓存。⚠️ 2026-10-15 起**前端不再展示**（咨询页的「情绪花园」已删，接口与落库逻辑保留，见 `docs/api-contract.md` 2.2） |
 | 会话状态流转 | 实体没有 `status`/`endedAt` 字段 |
 | Token 服务端失效 | JWT 无状态，退出仅清前端缓存 |
 | AI 对话记忆 | ✅ 已于 2026-10-15 做到「重启不失忆」：`AiService/PsychologicalSupportService.java` 的 `@Autowired ChatMemory chatMemory` 与 advisor 共用同一个 `MessageWindowChatMemory`，`ensureMemoryLoaded(...)` 在该会话重启后第一次 `/stream` 时从 `consultation_message` 回灌最近 30 条；仍未做的是持久化记忆仓库（Spring AI 2.1.0-M1 只自带 `InMemoryChatMemoryRepository`，没有 JDBC 版 `ChatMemoryRepository`），所以被删会话的记忆会短暂留在进程内。详见 `docs/api-contract.md` 2.2 |

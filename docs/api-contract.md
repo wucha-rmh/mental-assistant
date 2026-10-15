@@ -282,7 +282,8 @@ data: {}
 - 收到 `event: done` → `abort()` 结束，并置 `isAiTyping = false`
 - 收到普通 `message` → `JSON.parse(event.data)`，`code === '200'` 时取 `data.content` **累加**渲染
 - 失败时读 `payload.msg`（统一响应体的字段是 `msg`，不是 `message`）
-- 流关闭（`onclose`）后**只触发一次**情绪分析；自己 `abort()` 引起的 `AbortError` 不算错误
+- 自己 `abort()` 引起的 `AbortError` 不算错误
+- ⚠️ 2026-10-15 起**流关闭后不再触发情绪分析**（原 `onclose` 收尾已随情绪花园一起删除，见 2.2 末尾说明）
 
 **⚠️ 关键约束**：
 1. 响应 `Content-Type` 以 `text/event-stream` **开头**即可（前端用 `startsWith` 比对，容忍 `;charset=utf-8`）
@@ -394,13 +395,14 @@ GET /api/psychological-chat/session/{sessionId}/emotion      （需 token）
 - **缓存复用**：`last_emotion_updated_at` 不早于会话最后一条消息的时间时，直接返回缓存，**不再调用 AI**
   （实测第二次请求 9ms，不重复消耗 token）。
 - **自动重新分析**：会话又产生新消息后，下一次请求会重新分析并覆盖缓存（实测分析耗时 6-7 秒）。
-- **兜底**：会话没有任何消息、模型返回不是合法 JSON、调用失败（超时/额度/网络）时返回上面的默认值，
-  前端情绪面板不会报错；失败**不写缓存**，下次请求会重试。
+- **兜底**：会话没有任何消息、模型返回不是合法 JSON、调用失败（超时/额度/网络）时返回上面的默认值；
+  失败**不写缓存**，下次请求会重试。
 - 服务端已做字段校验：`emotionScore` 夹到 0-100（缺省 50）、`riskLevel` 夹到 0-3（缺省 0）、
   `improvementSuggestions` **一定是数组**（最多 5 条）——前端 `:46` 直接 `.length`、`v-for`，为 null 会抛错。
 - 参与分析的是**最近 20 条消息**（每条截断 500 字符），由「用户：/助手：」拼接。
 
 真实返回示例（tester 会话，用户表达「压力大、失眠、觉得自己很没用」）：
+
 ```json
 {
   "primaryEmotion": "压力",
@@ -416,8 +418,12 @@ GET /api/psychological-chat/session/{sessionId}/emotion      （需 token）
 }
 ```
 
-> 前端在**每次 SSE 流关闭后调用一次**（`consultation.vue` 的 `onclose`），所以首次分析要等几秒面板才刷新；
-> 这一路上不阻塞对话（SSE 已经结束）。
+> ⚠️ **当前前端不再调用这个接口**（2026-10-15 起）：原「情绪花园」面板已从 `frontend/src/views/consultation.vue`
+> 移除，咨询页现在只有左侧会话列表 + 右侧对话区。接口、缓存与落库逻辑**全部保留**（`last_emotion_analysis`
+> 仍在写、上面的实测数据仍成立），将来要在界面上重新展示时，只需把面板挂回并调用本接口即可；
+> `frontend/src/api/frontend.js` 里的 `getSessionEmotion` 也原样保留着。
+> 推论：`riskLevel` 目前**没有任何界面出口**（`riskDescription` 只在这个接口的返回体里），
+> 后端 `PSYCHOLOGICAL_SUPPORT_SYSTEM_PROMPT` 里「自杀倾向优先关怀」的提示词约束仍然生效。
 
 ---
 
@@ -742,7 +748,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 
 | 项 | 说明 |
 |---|---|
-| 情绪分析 | ✅ 已于 2026-10-15 接入 AI（见 2.2 会话情绪分析）：结果落 `consultation_session.last_emotion_analysis`，缓存未过期时复用、有新消息则重算；无消息或调用失败退回默认值 |
+| 情绪分析 | ✅ 已于 2026-10-15 接入 AI（见 2.2 会话情绪分析）：结果落 `consultation_session.last_emotion_analysis`，缓存未过期时复用、有新消息则重算；无消息或调用失败退回默认值。⚠️ 同日起前端不再展示（情绪花园已从咨询页移除），接口保留 |
 | 会话状态流转 | `consultation_session` 表没有 `status`/`endedAt` 字段，`ACTIVE` 只是返回值里的一个字符串 |
 | Token 服务端失效 | 退出登录仅清前端缓存，token 在有效期内仍可用 |
 | 对话记忆持久化 | ✅ 已于 2026-10-15 解决「重启失忆」（见 2.2 对话记忆）：重启后按需从 `consultation_message` 回灌最近 30 条；仍未做的是**持久化记忆仓库**（Spring AI 2.1.0-M1 没有 JDBC 版 `ChatMemoryRepository`），所以删掉的会话仍会短暂留在进程内存里 |
@@ -803,5 +809,8 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **用户可编辑/删除自己的日记**：新增 `DELETE /api/emotion-diary/{id}`（`EmotionDiaryService.deleteOwnDiary`，按「主键 + 登录用户」双条件校验，删不到别人的记录）；`GET /api/emotion-diary/page` 增加 `diaryDate` 参数以精确取某一天；`EmotionDiaryService` 把分页查询抽成共用的 `query(...)`，后台 `adminPage` 与用户端 `userPage` 各自调用。编辑复用 `POST /api/emotion-diary`（改哪一天就传哪一天）。前端 `emotionDiary.vue` 增加日期选择器（禁选未来）、按日期回填/提示、按钮在「保存记录 / 更新这篇记录」间切换、列表每条给「编辑 / 删除」（删除有二次确认，删空末页会回退页码）。7 项实测：删自己的 → 200 且记录消失；删别人的 → `日记不存在或无权访问` 且对方记录仍在；删不存在的 id → 同一句提示；无 token → 401；普通用户调后台删除仍被拒；管理员后台删除仍可用；测试记录已清理，全库回到 18 条日记（共 **26 个接口**）。 |
 | 2026-10-15 | 全站 UI 统一（温和疗愈风）：新增 `frontend/src/styles/tokens.scss`（设计令牌 + Element Plus CSS 变量映射）与 `styles/index.scss`（全局样式与组件微调），26 个页面/组件改用令牌；同时修掉侧栏高亮写死、看板 KPI 类名不匹配、分页参数用 `current`、翻页丢筛选、首页 CTA 无跳转、情绪面板数字写死、4 个 `@keyframes` 缺失、用户/AI 消息无法区分、Enter 不发送等问题（见 `CLAUDE.md` 三.9）。 |
 | 2026-10-15 | **情绪日记精简为「心情评分 + 今日感想」**：库表 `emotion_diary` 删除 `dominant_emotion`、`emotion_triggers`、`sleep_quality`、`stress_level` 四列（列数 13 → 9，迁移前 `mysqldump` 备份到 `.db-backup/emotion_diary_before_slim_20261015-172549.sql`，另存一份 CSV 到 `.tmp-schema/`）；同步删掉 `entity/EmotionDiary.java` 的四个字段、`DTO/command/EmotionDiaryCreateCommandDTO.java` 与 `DTO/response/EmotionDiaryAdminItemDTO.java` 的对应字段、`EmotionDiaryService.saveDiary`/`toDTO` 里的读写逻辑（`grep DominantEmotion\|EmotionTriggers\|SleepQuality\|StressLevel` 在 `backend/src` 已 0 命中，`mvn -B -q compile` 通过，`DataAnalyticsService` 只读 `moodScore`/`userId`/`diaryDate` 故看板不受影响）。前端 `views/emotionDiary.vue` 删掉整个「主要情绪」卡片（8 张情绪图 + `emotionOptions`/`selectEmotion`）与睡眠/压力下拉、情绪触发因素输入，表单只剩「心情评分」+「今日感想」；`views/emotional.vue` 删掉「生活指标」列、「情绪触发因素」列与详情弹窗的对应四项。实测：新增（`id=34`）→ 200 且响应体只含三个字段、我的记录与后台分页都能查到、`moodScore=42` 仍被拦（`心情评分范围是 1-10`）、看板 overview 200、库列数 9；测试记录已删除，库回到 19 行。 |
+| 2026-10-15 | **咨询页精简：删掉「AI 助手信息框」与「情绪花园」**：`frontend/src/views/consultation.vue` 左栏只剩「会话列表」（`.session-history` 改为 `flex:1` + 最小高度 0，`.session-list` 自己滚动），右侧对话区不变（`.chat-header` 保留）；随之删除 `defaultEmotion`/`currentEmotion`/`resetEmotion`/`loadSessionEmotion`/`getIntensityClass`/`getRiskText` 与 `fetchEventSource` 的 `onclose` 收尾调用，前端**不再请求** `GET /api/psychological-chat/session/{sessionId}/emotion`（接口、缓存、落库逻辑与 `api/frontend.js#getSessionEmotion` 全部保留，见 2.2 说明；`riskLevel`/`riskDescription` 因此暂时没有界面出口）。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。
+
+

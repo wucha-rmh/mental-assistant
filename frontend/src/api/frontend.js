@@ -28,6 +28,11 @@ export const addEmotionDiary = (data) => {
     return service.post('/emotion-diary', data)
 }
 
+// 我的情绪日记（只返回当前登录用户自己的记录）
+export const getMyEmotionDiaries = (params) => {
+    return service.get('/emotion-diary/page', { params })
+}
+
 export const getKnowledgeList = (params) => {
     return service.get('/knowledge/article/page', { params })
 }

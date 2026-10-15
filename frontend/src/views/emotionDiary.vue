@@ -85,13 +85,55 @@
                     </div>
                 </div>
             </div>
+            <!-- 我的记录：只显示当前登录用户自己的日记 -->
+            <div class="diary-card">
+                <div class="list-header">
+                    <div class="title">我的记录</div>
+                    <span v-if="listTotal" class="list-count">共 {{ listTotal }} 篇</span>
+                </div>
+                <div class="diary-list" v-loading="listLoading">
+                    <el-empty v-if="!listLoading && diaryList.length === 0" description="还没有记录，写完上面这份就会出现啦" />
+                    <div v-for="item in diaryList" :key="item.id" class="diary-item">
+                        <div class="item-head">
+                            <span class="item-date">{{ item.diaryDate }}</span>
+                            <el-rate :model-value="item.moodScore" :max="10" disabled size="small" />
+                            <el-tag v-if="item.dominantEmotion" effect="light" round>{{ item.dominantEmotion }}</el-tag>
+                        </div>
+                        <p
+                            v-if="item.diaryContent"
+                            class="item-content"
+                            :class="{ 'is-expanded': expandedIds.includes(item.id) }"
+                        >{{ item.diaryContent }}</p>
+                        <div class="item-foot">
+                            <span v-if="item.emotionTriggers">触发因素：{{ item.emotionTriggers }}</span>
+                            <span v-if="item.sleepQuality">睡眠 {{ item.sleepQuality }}/5</span>
+                            <span v-if="item.stressLevel">压力 {{ item.stressLevel }}/5</span>
+                            <el-button
+                                v-if="item.diaryContent && item.diaryContent.length > 80"
+                                text
+                                type="primary"
+                                @click="toggleExpand(item.id)"
+                            >{{ expandedIds.includes(item.id) ? '收起' : '展开' }}</el-button>
+                        </div>
+                    </div>
+                    <div class="pagination-info" v-if="listTotal > listSize">
+                        <el-pagination
+                            v-model:current-page="listPage"
+                            :page-size="listSize"
+                            :total="listTotal"
+                            layout="prev, pager, next"
+                            @current-change="fetchDiaryList"
+                        />
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
 <script setup>
     import { dayjs, ElMessage } from 'element-plus'
-    import { reactive } from 'vue'
-    import { addEmotionDiary } from '@/api/frontend'
+    import { onMounted, reactive, ref } from 'vue'
+    import { addEmotionDiary, getMyEmotionDiaries } from '@/api/frontend'
 
     // 情绪评分
     const emotionStatus = ['绝望崩溃', '消沉抑郁', '焦虑烦躁', '低落不悦', '平静淡然', '轻松惬意', '愉悦舒心', '欢欣满足', '兴奋欣喜', '极致幸福']
@@ -142,8 +184,45 @@
         addEmotionDiary(diaryForm).then(() => {
             ElMessage.success('提交成功')
             resetForm()
+            // 提交后回到列表第一页，立刻能看到刚才写的那一篇
+            listPage.value = 1
+            fetchDiaryList()
         })
     }
+
+    // ── 我的记录（只查当前登录用户的日记）────────────────────────────
+    const diaryList = ref([])
+    const listLoading = ref(false)
+    const listPage = ref(1)
+    const listSize = 5
+    const listTotal = ref(0)
+    const expandedIds = ref([])
+
+    const fetchDiaryList = () => {
+        listLoading.value = true
+        getMyEmotionDiaries({ pageNum: listPage.value, pageSize: listSize })
+            .then(res => {
+                diaryList.value = (res && res.records) || []
+                listTotal.value = (res && res.total) || 0
+            })
+            .catch(() => {
+                diaryList.value = []
+                listTotal.value = 0
+            })
+            .finally(() => {
+                listLoading.value = false
+            })
+    }
+
+    const toggleExpand = (id) => {
+        expandedIds.value = expandedIds.value.includes(id)
+            ? expandedIds.value.filter(item => item !== id)
+            : [...expandedIds.value, id]
+    }
+
+    onMounted(() => {
+        fetchDiaryList()
+    })
 
     const iconUrl = new URL('@/assets/images/like.png', import.meta.url).href
 </script>
@@ -217,6 +296,78 @@
             font-size: var(--mh-font-5);
             font-weight: 600;
             color: var(--mh-text-1);
+        }
+
+        /* 我的记录 */
+        .list-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            margin-bottom: var(--mh-space-4);
+
+            .title {
+                margin-bottom: 0;
+            }
+
+            .list-count {
+                font-size: var(--mh-font-2);
+                color: var(--mh-text-3);
+            }
+        }
+
+        .diary-list {
+            .diary-item {
+                padding: var(--mh-space-4);
+                margin-bottom: var(--mh-space-3);
+                background: var(--mh-surface-soft);
+                border: 1px solid var(--mh-border);
+                border-radius: var(--mh-radius);
+
+                &:last-child {
+                    margin-bottom: 0;
+                }
+
+                .item-head {
+                    display: flex;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: var(--mh-space-3);
+
+                    .item-date {
+                        font-weight: 600;
+                        color: var(--mh-text-1);
+                    }
+                }
+
+                .item-content {
+                    margin-top: var(--mh-space-2);
+                    font-size: var(--mh-font-3);
+                    line-height: 1.8;
+                    color: var(--mh-text-2);
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                    display: -webkit-box;
+                    -webkit-line-clamp: 3;
+                    line-clamp: 3;
+                    -webkit-box-orient: vertical;
+                    overflow: hidden;
+
+                    &.is-expanded {
+                        display: block;
+                        overflow: visible;
+                    }
+                }
+
+                .item-foot {
+                    display: flex;
+                    align-items: center;
+                    flex-wrap: wrap;
+                    gap: var(--mh-space-4);
+                    margin-top: var(--mh-space-3);
+                    font-size: var(--mh-font-2);
+                    color: var(--mh-text-3);
+                }
+            }
         }
 
         .section {

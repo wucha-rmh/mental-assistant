@@ -540,6 +540,26 @@ DELETE /api/knowledge/article/{id}                          （仅管理员）
 
 ### 2.4 情绪日记
 
+#### 我的情绪日记（用户端，只返回自己的）
+
+```
+GET /api/emotion-diary/page                                 （需 token）
+```
+
+> 2026-10-15 新增。`userId` **强制取登录态**，请求里传什么都不生效，
+> 因此普通用户不可能看到别人的日记；筛选只保留 `moodScreRange`。
+
+| 参数 | 说明 |
+|---|---|
+| `pageNum` / `currentPage` / `current` | 页码，默认 `1`（三种命名都兼容） |
+| `pageSize` / `size` | 每页条数，默认 `10`，上限 100 |
+| `moodScreRange` | 可选，心情区间 `1-3` / `4-6` / `7-10` |
+
+返回 `data` 的结构与下面后台列表**完全一致**（`records` 行里会带上自己的 `userId`/`username`/`nickname`）。
+未登录 → `HTTP 401` + `code = "A0301"`。
+
+#### 情绪日记分页（后台，全部用户）
+
 ```
 GET /api/emotion-diary/admin/page                           （仅管理员）
 ```
@@ -717,11 +737,12 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 ## 五、前端调用 vs 后端实现（对齐状态）
 
 后端目前有七个 Controller（`Test`、`User`、`PsychologicalChat`、`Knowledge`、`EmotionDiary`、`DataAnalytics`、`File`），
-共 **24 个接口**（另有 `/files/**` 静态资源映射，不计入接口数）。`frontend/src/api/` 里的调用**已全部有后端实现**，下表保留作为对照：
+共 **25 个接口**（另有 `/files/**` 静态资源映射，不计入接口数）。`frontend/src/api/` 里的调用**已全部有后端实现**，下表保留作为对照：
 
 | 前端调用 | 调用位置 | 后端 |
 |---|---|---|
 | `POST /api/emotion-diary` | `api/frontend.js` → `views/emotionDiary.vue` | ✅ 已实现（见 2.4） |
+| `GET /api/emotion-diary/page` | `api/frontend.js` → `views/emotionDiary.vue`（「我的记录」） | ✅ 已实现（见 2.4） |
 | `GET /api/emotion-diary/admin/page` | `api/admin.js` → `views/emotional.vue` | ✅ 已实现（见 2.4） |
 | `DELETE /api/emotion-diary/admin/{id}` | `api/admin.js` → `views/emotional.vue` | ✅ 已实现（见 2.4） |
 | `GET /api/knowledge/category/tree` | `api/admin.js` → `views/knowledge.vue` | ✅ 已实现（见 2.3） |
@@ -736,7 +757,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | `GET /api/data-analytics/overview` | `api/admin.js` → `views/dashboard.vue` | ✅ 已实现（见 2.5） |
 
 
-> 到 2026-10-15 为止，**数据看板、心理知识（含新增/编辑/上下架/删除）、情绪日记（含用户端记录/后台删除）、文件上传、头像**都有后端实现，前端不会再出现 404。
+> 到 2026-10-15 为止，**数据看板、心理知识（含新增/编辑/上下架/删除）、情绪日记（含用户端记录/我的记录/后台查看与删除）、文件上传、头像**都有后端实现，前端不会再出现 404。
 > 仍未实现的是**能力**而非接口：会话状态流转、token 服务端失效、对话记忆的持久化仓库（重启回灌已做，见 2.2）。
 
 ---
@@ -752,5 +773,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **情绪分析接入 AI（第②步）**：新增 `AiService/EmotionAnalysisService.java`（注入 `OpenAiChatModel` 自建**不带记忆 advisor** 的 `ChatClient`，取最近 20 条消息、每条截断 500 字符做结构化评估）与 `PromptManage.EMOTION_ANALYSIS_SYSTEM_PROMPT`（只输出严格 JSON，含 riskLevel 0-3 判定标准）；`ConsultationSessionService` 增 `saveEmotionAnalysis`（显式 set `last_emotion_analysis`/`last_emotion_updated_at`）；`PsychologicalChat` 的 `GET /session/{sessionId}/emotion` 改为 `emotionAnalysisService.analyzeOrGet(...)`——缓存覆盖最后一条消息则直接复用（实测 9ms），有新消息则重算（实测 6-7s）并落库；模型输出经 `extractJson`（去 ``` 围栏）+ 逐字段夹紧校验（score 0-100、riskLevel 0-3、`improvementSuggestions` 保证为数组且最多 5 条）；无消息/非法 JSON/调用异常一律退化为 `SessionEmotionDTO.defaultValue()` 且**不写缓存**（下次重试）。9 项端到端实测全部通过（首次分析、缓存命中不重复调 AI、新消息后重算、越权/不存在会话、无 token 401）。 |
 | 2026-10-15 | **AI 对话记忆回灌（第④步）**：`PsychologicalSupportService` 新增 `@Slf4j` 与 `@Autowired ChatMemory chatMemory`（与 advisor 共用同一个 `MessageWindowChatMemory`），`streamPsychologicalChat` 在组装模型流前调用新的私有方法 `ensureMemoryLoaded(dbSessionId, conversationId, currentUserMessage)`——进程内已有记忆则跳过；否则取该会话最近 `MEMORY_WINDOW_MESSAGES`(30) 条历史，剔除「已落库的本次用户消息」、丢弃可能出现在首条的 AI 回复，再用 `AssistantMessage`/`UserMessage` 写回窗口（`SENDER_TYPE_AI=2`），失败只 `log.warn`。实测：重启前告知「小北/豆豆/攀岩」，重启后追问仍全部答对（3.1s），日志 `回灌对话记忆 sessionId=37 ... messages=6`。测试会话已删除。 |
 | 2026-10-15 | **收尾（第⑤步）**：① **日期时间统一**为 `yyyy-MM-dd HH:mm:ss`——新增 `config/JacksonConfig.java`（Spring Boot 4 用 Jackson 3，扩展点是 `org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer`，注册 `SimpleModule` + `LocalDateTimeSerializer`；`spring.jackson.date-format` 对 `LocalDateTime` 无效），前端 `consultation.vue` 的乐观消息时间改用 `dayjs().format('YYYY-MM-DD HH:mm:ss')`（见 一.5）。② **临时文件清理任务**——新增 `config/SchedulingConfig.java`(`@EnableScheduling`) 与 `task/TempFileCleanupTask.java`（`file.temp-cleanup-cron`，默认每天 03:30；实测删除过期临时文件后库与磁盘均无残留，见 2.6）。③ **工作区根 git 仓库**——新增根 `.gitignore`（`backend/` 保持独立仓库，忽略 `node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/` 等）+ `git init -b main`，首次提交 61 个文件（`frontend/`、`docs/`、`CLAUDE.md`、`README.md`）。④ 删除前端死文件 `frontend/README.md`、`frontend/index.md`（0 字节）、`frontend/src/assets/vue.svg`（均无引用）。⑤ 品牌名统一为「心理健康AI助手」（`consultation.vue` 里残留的「宁渡AI助手」已改掉）。 |
+| 2026-10-15 | **用户端可查看自己的情绪日记**：新增 `GET /api/emotion-diary/page`（`EmotionDiaryController.myPage`，`userId` 强制取登录态，复用 `EmotionDiaryService.adminPage` 的查询与 DTO）。前端 `api/frontend.js#getMyEmotionDiaries` + `views/emotionDiary.vue` 新增「我的记录」卡片：按日期倒序、评分 / 情绪标签 / 正文（超 3 行可展开）/ 触发因素与睡眠压力指标、分页，提交后自动回到第一页并刷新（共 **25 个接口**）。7 项实测通过：只返回本人记录（tester 1 条，与库里 `user_id=6` 一致）、`pageNum` 与 `currentPage` 命名都兼容、无 token → `HTTP 401` + `A0301`、`moodScreRange` 区间筛选生效、管理员后台接口仍是全部 18 条、普通用户访问后台接口被拒。 |
+| 2026-10-15 | 全站 UI 统一（温和疗愈风）：新增 `frontend/src/styles/tokens.scss`（设计令牌 + Element Plus CSS 变量映射）与 `styles/index.scss`（全局样式与组件微调），26 个页面/组件改用令牌；同时修掉侧栏高亮写死、看板 KPI 类名不匹配、分页参数用 `current`、翻页丢筛选、首页 CTA 无跳转、情绪面板数字写死、4 个 `@keyframes` 缺失、用户/AI 消息无法区分、Enter 不发送等问题（见 `CLAUDE.md` 三.9）。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。

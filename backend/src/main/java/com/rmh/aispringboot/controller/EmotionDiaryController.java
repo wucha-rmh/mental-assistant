@@ -57,6 +57,27 @@ public class EmotionDiaryController {
     }
 
     /**
+     * 我的情绪日记分页（当前登录用户）
+     *
+     * <p>与后台列表共用同一套查询：{@code userId} 强制取登录态，前端无法指定，
+     * 因此不可能看到别人的日记；筛选只保留心情区间 {@code moodScreRange}。
+     */
+    @GetMapping("/page")
+    public Result<Page<EmotionDiaryAdminItemDTO>> myPage(
+            @RequestParam(required = false) Integer pageNum,
+            @RequestParam(required = false) Integer currentPage,
+            @RequestParam(required = false) Integer current,
+            @RequestParam(required = false) Integer pageSize,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String moodScreRange) {
+
+        Long userId = SecurityUserUtil.currentUser().getId();
+        int page = WebParamUtil.page(pageNum, currentPage, current, DEFAULT_PAGE);
+        int pageSizeValue = WebParamUtil.size(pageSize, size, DEFAULT_SIZE);
+        return Result.ok(emotionDiaryService.adminPage(page, pageSizeValue, String.valueOf(userId), moodScreRange));
+    }
+
+    /**
      * 记录心情日记（登录用户）
      *
      * <p>{@code (user_id, diary_date)} 上有唯一键，同一天重复提交按覆盖更新处理，

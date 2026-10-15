@@ -126,7 +126,7 @@
                     </div>
                     <div class="chat-info">
                         <h2>心理健康AI助手</h2>
-                        <p>您的贴心AI心理健康助手</p>
+                        <p>{{ isTempSession ? '新的对话已就绪，说说你现在的心情吧' : '您的贴心AI心理健康助手' }}</p>
                     </div>
                 </div>
                 <el-button circle @click="createNewFrontendSession" title="新建会话">
@@ -202,7 +202,7 @@
     </div>
 </template>
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { startSession, getSessionList, deleteSession, getSessionDetail, getSessionEmotion } from '@/api/frontend'
 import { dayjs, ElMessage, ElMessageBox } from 'element-plus'
 import { ChatRound, DeleteFilled } from '@element-plus/icons-vue'
@@ -215,13 +215,22 @@ const iconUrl2 = new URL('@/assets/images/users.png', import.meta.url).href
 
 // 新建会话
 const createNewFrontendSession = () => {
-    // 创建一个新的会话对象
-    const newSession = {
+    // AI 正在流式回复时不允许切换，否则旧流的内容会继续追加到新会话里
+    if (isAiTyping.value) {
+        ElMessage.warning('AI 正在回复中，请稍候再新建会话')
+        return
+    }
+    // 关键：切回「尚未创建（TEMP）」状态的同时必须清空消息列表与情绪面板。
+    // 旧实现只改了 currentSession，屏幕上的旧消息还在，所以看起来「点了没反应」；
+    // 刷新页面后 messages 本来就是空的，才像是「冒出一个新会话」。
+    currentSession.value = {
         sessionId: `temp_${Date.now()}`,
         status: 'TEMP',
         sessionTitle: '新对话'
     }
-    currentSession.value = newSession
+    messages.value = []
+    userMessage.value = ''
+    resetEmotion()
 }
 
 // 定义一个当前会话对象
@@ -246,6 +255,14 @@ const defaultEmotion = {
     improvementSuggestions: []
 }
 const currentEmotion = ref({ ...defaultEmotion })
+
+// 把情绪面板恢复成「未分析」状态（新建会话、还没生成分析结果时用）
+const resetEmotion = () => {
+    currentEmotion.value = { ...defaultEmotion }
+}
+
+// 当前是不是一个还没落库的新会话（TEMP）：用于给用户「新建成功」的即时反馈
+const isTempSession = computed(() => currentSession.value?.status === 'TEMP')
 
 const loadSessionEmotion = (sessionId) => {
    // 确保sessionID格式正确
@@ -334,7 +351,8 @@ const startNewSession = (message) => {
         initialMessage: message
     }
     if (currentSession.value.sessionTitle === '新对话') {
-        sessionParams.sessionTitle = `心理健康AI助手 - ${new Date().toLocaleString()}`
+        // 与项目日期格式约定保持一致（yyyy-MM-dd HH:mm），不要用 toLocaleString
+        sessionParams.sessionTitle = `心理健康AI助手 - ${dayjs().format('YYYY-MM-DD HH:mm')}`
     } else {
         // 如果历史会话记录
         sessionParams.sessionTitle = currentSession.value.sessionTitle

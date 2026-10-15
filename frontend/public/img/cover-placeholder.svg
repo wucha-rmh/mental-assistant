@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="260" viewBox="0 0 400 260" role="img" aria-label="暂无封面">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a8c8f0"/>
+      <stop offset="55%" stop-color="#8fb7e8"/>
+      <stop offset="100%" stop-color="#c9b8e8"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="260" fill="url(#bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M176 96c-10-14-34-14-42 2-8 15 2 30 20 44l14 12 14-12c18-14 28-29 20-44-8-16-32-16-42-2z" fill="#ffffff" fill-opacity="0.55"/>
+  </g>
+  <text x="200" y="196" text-anchor="middle" font-family="'Microsoft YaHei','PingFang SC',sans-serif" font-size="18" fill="#ffffff" fill-opacity="0.95">心理健康知识</text>
+</svg>

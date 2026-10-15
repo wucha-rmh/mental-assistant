@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────
+# 工作区根仓库（frontend/ + docs/ + CLAUDE.md + README.md）
+#
+# backend/ 有自己独立的 git 仓库（remote: mental-health-assistant，
+# 仓库根就是 backend/ 目录），所以这里整体忽略，避免嵌套仓库被
+# 记录成一个 gitlink、也避免同一份后端代码被两个仓库重复跟踪。
+# 后端改动请进 backend/ 目录操作 git。
+# ─────────────────────────────────────────────────────────────
+backend/
+
+# 依赖与构建产物（frontend/.gitignore 里也有一份，这里兜底）
+node_modules/
+dist/
+dist-ssr/
+*.local
+logs/
+*.log
+
+# 运行期状态与备份（不是源码，且体积大/含本机信息）
+.acl-recovery/
+.db-backup/
+
+# 临时调试产物（脚本、请求体、恢复出来的上下文等）
+.tmp*
+.tmp-*
+.e2e/
+.plan-recover.txt
+
+# IDE / 系统
+.idea/
+.vscode/
+*.iml
+Thumbs.db
+Desktop.ini

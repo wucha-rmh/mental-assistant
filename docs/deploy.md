@@ -188,32 +188,93 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ---
 
-## 5. 数据迁移（可选，把本机数据搬上去）
+## 5. 数据在哪、怎么备份、怎么搬
 
-思路：**先结构、再数据、最后文件**。库里存的文件地址是 `/files/...` 相对路径，所以**不需要改任何路径**，但磁盘上的文件必须一起搬。
+### 5.1 数据分三层存，搬迁必须搬两样
 
-```bash
-# ① 本机：全量导出（含 CREATE DATABASE 与 USE，连库带数据）
-mysqldump -uroot -p123456 --single-transaction --routines --triggers --events \
-  --databases mental_health_assistant \
-  --result-file=D:\mental_health_assistant\.db-backup\deploy-full.sql
+| 层 | 内容 | 本机（Windows） | 服务器（Linux） | 备注 |
+|---|---|---|---|---|
+| ① 行数据 | 8 张表的记录 | `C:\ProgramData\MySQL\MySQL Server 8.0\Data\mental_health_assistant\*.ibd`（实测 `SELECT @@datadir` 就是这个） | `/var/lib/mysql/mental_health_assistant/*.ibd` | InnoDB 二进制页文件，**只能通过 SQL 读写**，直接打开是乱码 |
+| ② 上传文件 | 头像 / 文章封面（**字节不在库里**） | `backend\uploads\bussiness\...`（实测 10 个文件 / 1.1 MB） | `/opt/mha/backend/uploads/bussiness/...` | 库里 `sys_file_info.file_path` 只存 `/files/bussiness/...` 这个字符串 |
+| ③ 文本快照 | `.sql` 备份 | `backend\target\*.sql`、`.db-backup\*.sql`、`db\schema.sql` | 上传用的 `/root/mha-upload/*.sql` | 只有 `db/schema.sql` 入库跟踪（**结构、0 行**） |
 
-# ② 本机：打包上传文件（头像 / 文章封面）
-tar czf uploads.tar.gz -C backend uploads
+两个数据在同一张图里是这么关联的：
+
+```
+浏览器 ──> Nginx ──/api/**──> 127.0.0.1:1236 (jar) ──JDBC──> MySQL :3306     ← 行数据在 .ibd 里
+                    ──/files/**───────────────┘
+                                    └─ 读 /opt/mha/backend/uploads/…         ← 图片字节在这里
 ```
 
-```bash
-# ③ 服务器：恢复（用 root 导入，因为 dump 里带 CREATE DATABASE）
-sudo mysql < deploy-full.sql
+所以 **只导 SQL、不传 `uploads/` 的结果就是「标题都在、封面全裂」**。库里存的是相对路径，两边的目录结构一致，**不需要改任何配置**。
 
-# ④ 服务器：解包上传文件到后端工作目录
-sudo tar xzf uploads.tar.gz -C /opt/mha/backend
-sudo chown -R mha:mha /opt/mha/backend/uploads
+### 5.2 从本机搬到服务器（2026-10-15 实测走通）
+
+**① 本机导出**（整库结构 + 数据；不带 `--databases`，所以文件里**没有** `CREATE DATABASE` / `USE`）：
+
+```powershell
+mysqldump.exe -uroot -p123456 --result-file=D:\mental_health_assistant\backend\target\mha_full.sql --single-transaction --no-tablespaces --set-gtid-purged=OFF --default-character-set=utf8mb4 --triggers mental_health_assistant
 ```
 
-> ⚠️ 带 `--databases` 的 dump 里含 `USE mental_health_assistant;`，**不要在别的库里 `source`** 它 —— 否则会灌回/灌错库。
-> 恢复演练与更多细节见 `.db-backup/RESTORE.md`。
-> 只想搬数据、不想重建结构时：服务器先执行第 2 节的 `db/schema.sql`，再 `mysqldump --no-create-info` 导数据单独导入。
+- ⚠️ pwsh 里**必须用 `--result-file=`，不要用 `>` 重定向**：PowerShell 5.1 会把原生命令的输出当文本重新编码，中文全坏。
+- 产物自带 `/*!40014 SET ... FOREIGN_KEY_CHECKS=0 */`，导入时**不怕外键顺序**。
+- 自检（实测值）：`44585 字节`、`DROP TABLE` / `CREATE TABLE` / `INSERT INTO` **各 8 个**、抽一行能看到 `'你好，我叫小明'` 这样的中文（不是乱码）。
+
+**② SFTP 上传两样**：
+
+| 本机 | 服务器 |
+|---|---|
+| `backend\target\mha_full.sql` | `/root/mha-upload/mha_full.sql` |
+| `backend\uploads`（整个**目录**） | `/root/mha-upload/uploads/`（保住 `bussiness/article`、`bussiness/user_avatar` 两层结构） |
+
+**③ 服务器导入**（用应用账号 `mha` 就够，它对该库有 `ALL PRIVILEGES`）：
+
+```bash
+mysql -umha -p"$(sudo sed -n 's/^DB_PASSWORD=//p' /etc/mha/mha.env)" -h127.0.0.1 -D mental_health_assistant < /root/mha-upload/mha_full.sql
+```
+
+- 成功时**没有任何输出**；`-D mental_health_assistant` 不能少（dump 里没有 `USE`）。
+- ⚠️ 这是**整库覆盖**：先 `DROP TABLE` 再重建这 8 张表，服务器上原有的行（包括手工 `INSERT` 的 admin）会被全部替换。
+
+**④ 上传文件落位 + 自检**（落点 = `WorkingDirectory=/opt/mha/backend` + `file.upload-dir: ./uploads`）：
+
+```bash
+sudo mkdir -p /opt/mha/backend/uploads; sudo cp -r /root/mha-upload/uploads/. /opt/mha/backend/uploads/; sudo chown -R mha:mha /opt/mha/backend/uploads; find /opt/mha/backend/uploads -type f | wc -l; curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1/files/bussiness/user_avatar/1792047868545-d78bcf3e.jpg
+```
+
+期望：`10` 和 `200`（库里 10 行 `sys_file_info` 与 10 个文件一一对应，少一个就是一张裂图）。
+
+**⑤ 验收**：刷新浏览器 → 重新登录 → 后台文章 / 咨询记录 / 情绪日记都应是本机的数据，封面头像不裂。
+
+- **不用重启后端**：连接池读到的是新数据。
+- 但**建议退出重登**：JWT 里带的是 `userId`，本机 admin 的 id 与服务器上手工建的那条可能不同，旧 token 会撞上「用户不存在 → `A0230 token无效`」。
+
+### 5.3 备份（动数据之前先做这个）
+
+```bash
+TS=$(date +%Y%m%d-%H%M%S); D=/root/mha-backup/$TS; sudo mkdir -p $D; sudo mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --default-character-set=utf8mb4 -umha -p"$(sudo sed -n 's/^DB_PASSWORD=//p' /etc/mha/mha.env)" -h127.0.0.1 --result-file=$D/mha_full.sql mental_health_assistant; sudo tar czf $D/uploads.tar.gz -C /opt/mha/backend uploads; ls -lh $D
+```
+
+> ⚠️ 本机 `.db-backup/` 里那两份 `mental_health_assistant_full_20261015-1742/1752.sql`（52406 B）是**改 admin 口令之前**的快照：
+> 拿它们恢复会把口令退回老值，并把已删的 `ai_analysis_task` 表和 `emotion_diary` 的 4 个已删列一起带回来。要留备份就用新导的那份。
+
+### 5.4 恢复
+
+```bash
+# 结构（只结构、无数据；库要先存在）
+mysql -umha -p"$(sudo sed -n 's/^DB_PASSWORD=//p' /etc/mha/mha.env)" -h127.0.0.1 -e "CREATE DATABASE IF NOT EXISTS mental_health_assistant DEFAULT CHARACTER SET utf8mb4;"
+mysql -umha -p"$(sudo sed -n 's/^DB_PASSWORD=//p' /etc/mha/mha.env)" -h127.0.0.1 -D mental_health_assistant < db/schema.sql
+
+# 数据（整库覆盖式）
+mysql -umha -p"$(sudo sed -n 's/^DB_PASSWORD=//p' /etc/mha/mha.env)" -h127.0.0.1 -D mental_health_assistant < /root/mha-backup/<TS>/mha_full.sql
+
+# 文件
+sudo tar xzf /root/mha-backup/<TS>/uploads.tar.gz -C /opt/mha/backend && sudo chown -R mha:mha /opt/mha/backend/uploads
+```
+
+- 恢复演练与更多细节见 `.db-backup/RESTORE.md`。
+- 只想搬数据、不想重建结构：服务器先执行第 2 节的 `db/schema.sql`，再 `mysqldump --no-create-info` 单独导数据。
+- ⚠️ 空库（0 行）启动时**没有管理员**，而注册接口只能建普通用户 → 必须手工 `INSERT` 一条 `user_type=2` 的账号（SQL 见 `docs/DEPLOY-PROGRESS.md` 第六节）。
 
 ---
 

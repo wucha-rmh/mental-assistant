@@ -28,9 +28,14 @@ export const addEmotionDiary = (data) => {
     return service.post('/emotion-diary', data)
 }
 
-// 我的情绪日记（只返回当前登录用户自己的记录）
+// 我的情绪日记（只返回当前登录用户自己的记录，可用 diaryDate 精确取某一天）
 export const getMyEmotionDiaries = (params) => {
     return service.get('/emotion-diary/page', { params })
+}
+
+// 删除自己的一篇情绪日记（后端按「主键 + 登录用户」校验归属）
+export const deleteMyEmotionDiary = (id) => {
+    return service.delete(`/emotion-diary/${id}`)
 }
 
 export const getKnowledgeList = (params) => {

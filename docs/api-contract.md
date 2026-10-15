@@ -554,15 +554,26 @@ GET /api/emotion-diary/page                                 （需 token）
 | `pageNum` / `currentPage` / `current` | 页码，默认 `1`（三种命名都兼容） |
 | `pageSize` / `size` | 每页条数，默认 `10`，上限 100 |
 | `moodScreRange` | 可选，心情区间 `1-3` / `4-6` / `7-10` |
+| `diaryDate` | 可选，精确取某一天（`yyyy-MM-dd`）。前端切换记录日期时用它判断「该天已有记录 → 编辑 / 没有 → 新增」 |
 
 返回 `data` 的结构与下面后台列表**完全一致**（`records` 行里会带上自己的 `userId`/`username`/`nickname`）。
 未登录 → `HTTP 401` + `code = "A0301"`。
 
-> ⚠️ **一天一条**：新增那条接口按 `(user_id, diary_date)` 唯一，所以「同一天再次提交 = 更新今天这条」，
-> 不会新增第二条（`created_at` 不变、`updated_at` 刷新）。
-> 前端为了不让用户误以为「被覆盖」，会：① 打开页面时若今天已有记录就**回填表单**；
-> ② 顶部提示「今天已经记录过一篇，保存会更新这一篇」；③ 按钮文案变成「更新今日记录」；
-> ④ 列表里被改过的记录显示「最后更新 …」。
+> ⚠️ **一天一条 + 编辑就是重新提交那一天**：新增/编辑共用 `POST /api/emotion-diary`，
+> 关键在 `diaryDate`：填今天就是记今天，填以前的某一天就是**改那一天**（服务端按 `(user_id, diary_date)` upsert，
+> 只更新不新增）。前端为了不让用户误以为「被覆盖」，会：
+> ① 提供**记录日期选择器**（不允许选未来）；② 该日期已有记录时**把内容回填进表单**并提示「保存会更新这一篇」；
+> ③ 按钮文案在「保存记录 / 更新这篇记录」之间切换；④ 列表里被改过的记录显示「最后更新 …」。
+
+#### 删除自己的一篇日记
+
+```
+DELETE /api/emotion-diary/{id}                              （需 token）
+```
+
+> `{id}` 是**日记主键**（不是日期、不是用户ID）。服务层按「主键 + 登录用户」双条件校验：
+> 查不到与不属于自己都返回 `code = "BUSINESS_ERROR"`、`msg = "日记不存在或无权访问"`，
+> 因此不能用来探测别人有没有这条日记。返回 `data: null`，成功即 `code === "200"`。
 
 #### 情绪日记分页（后台，全部用户）
 
@@ -743,12 +754,13 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 ## 五、前端调用 vs 后端实现（对齐状态）
 
 后端目前有七个 Controller（`Test`、`User`、`PsychologicalChat`、`Knowledge`、`EmotionDiary`、`DataAnalytics`、`File`），
-共 **25 个接口**（另有 `/files/**` 静态资源映射，不计入接口数）。`frontend/src/api/` 里的调用**已全部有后端实现**，下表保留作为对照：
+共 **26 个接口**（另有 `/files/**` 静态资源映射，不计入接口数）。`frontend/src/api/` 里的调用**已全部有后端实现**，下表保留作为对照：
 
 | 前端调用 | 调用位置 | 后端 |
 |---|---|---|
 | `POST /api/emotion-diary` | `api/frontend.js` → `views/emotionDiary.vue` | ✅ 已实现（见 2.4） |
 | `GET /api/emotion-diary/page` | `api/frontend.js` → `views/emotionDiary.vue`（「我的记录」） | ✅ 已实现（见 2.4） |
+| `DELETE /api/emotion-diary/{id}` | `api/frontend.js` → `views/emotionDiary.vue`（「我的记录」里删除） | ✅ 已实现（见 2.4） |
 | `GET /api/emotion-diary/admin/page` | `api/admin.js` → `views/emotional.vue` | ✅ 已实现（见 2.4） |
 | `DELETE /api/emotion-diary/admin/{id}` | `api/admin.js` → `views/emotional.vue` | ✅ 已实现（见 2.4） |
 | `GET /api/knowledge/category/tree` | `api/admin.js` → `views/knowledge.vue` | ✅ 已实现（见 2.3） |
@@ -780,6 +792,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **AI 对话记忆回灌（第④步）**：`PsychologicalSupportService` 新增 `@Slf4j` 与 `@Autowired ChatMemory chatMemory`（与 advisor 共用同一个 `MessageWindowChatMemory`），`streamPsychologicalChat` 在组装模型流前调用新的私有方法 `ensureMemoryLoaded(dbSessionId, conversationId, currentUserMessage)`——进程内已有记忆则跳过；否则取该会话最近 `MEMORY_WINDOW_MESSAGES`(30) 条历史，剔除「已落库的本次用户消息」、丢弃可能出现在首条的 AI 回复，再用 `AssistantMessage`/`UserMessage` 写回窗口（`SENDER_TYPE_AI=2`），失败只 `log.warn`。实测：重启前告知「小北/豆豆/攀岩」，重启后追问仍全部答对（3.1s），日志 `回灌对话记忆 sessionId=37 ... messages=6`。测试会话已删除。 |
 | 2026-10-15 | **收尾（第⑤步）**：① **日期时间统一**为 `yyyy-MM-dd HH:mm:ss`——新增 `config/JacksonConfig.java`（Spring Boot 4 用 Jackson 3，扩展点是 `org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer`，注册 `SimpleModule` + `LocalDateTimeSerializer`；`spring.jackson.date-format` 对 `LocalDateTime` 无效），前端 `consultation.vue` 的乐观消息时间改用 `dayjs().format('YYYY-MM-DD HH:mm:ss')`（见 一.5）。② **临时文件清理任务**——新增 `config/SchedulingConfig.java`(`@EnableScheduling`) 与 `task/TempFileCleanupTask.java`（`file.temp-cleanup-cron`，默认每天 03:30；实测删除过期临时文件后库与磁盘均无残留，见 2.6）。③ **工作区根 git 仓库**——新增根 `.gitignore`（`backend/` 保持独立仓库，忽略 `node_modules/`、`dist/`、`.acl-recovery/`、`.db-backup/`、`.e2e/` 等）+ `git init -b main`，首次提交 61 个文件（`frontend/`、`docs/`、`CLAUDE.md`、`README.md`）。④ 删除前端死文件 `frontend/README.md`、`frontend/index.md`（0 字节）、`frontend/src/assets/vue.svg`（均无引用）。⑤ 品牌名统一为「心理健康AI助手」（`consultation.vue` 里残留的「宁渡AI助手」已改掉）。 |
 | 2026-10-15 | **用户端可查看自己的情绪日记**：新增 `GET /api/emotion-diary/page`（`EmotionDiaryController.myPage`，`userId` 强制取登录态，复用 `EmotionDiaryService.adminPage` 的查询与 DTO）。前端 `api/frontend.js#getMyEmotionDiaries` + `views/emotionDiary.vue` 新增「我的记录」卡片：按日期倒序、评分 / 情绪标签 / 正文（超 3 行可展开）/ 触发因素与睡眠压力指标、分页，提交后自动回到第一页并刷新（共 **25 个接口**）。7 项实测通过：只返回本人记录（tester 1 条，与库里 `user_id=6` 一致）、`pageNum` 与 `currentPage` 命名都兼容、无 token → `HTTP 401` + `A0301`、`moodScreRange` 区间筛选生效、管理员后台接口仍是全部 18 条、普通用户访问后台接口被拒。 |
+| 2026-10-15 | **用户可编辑/删除自己的日记**：新增 `DELETE /api/emotion-diary/{id}`（`EmotionDiaryService.deleteOwnDiary`，按「主键 + 登录用户」双条件校验，删不到别人的记录）；`GET /api/emotion-diary/page` 增加 `diaryDate` 参数以精确取某一天；`EmotionDiaryService` 把分页查询抽成共用的 `query(...)`，后台 `adminPage` 与用户端 `userPage` 各自调用。编辑复用 `POST /api/emotion-diary`（改哪一天就传哪一天）。前端 `emotionDiary.vue` 增加日期选择器（禁选未来）、按日期回填/提示、按钮在「保存记录 / 更新这篇记录」间切换、列表每条给「编辑 / 删除」（删除有二次确认，删空末页会回退页码）。7 项实测：删自己的 → 200 且记录消失；删别人的 → `日记不存在或无权访问` 且对方记录仍在；删不存在的 id → 同一句提示；无 token → 401；普通用户调后台删除仍被拒；管理员后台删除仍可用；测试记录已清理，全库回到 18 条日记（共 **26 个接口**）。 |
 | 2026-10-15 | 全站 UI 统一（温和疗愈风）：新增 `frontend/src/styles/tokens.scss`（设计令牌 + Element Plus CSS 变量映射）与 `styles/index.scss`（全局样式与组件微调），26 个页面/组件改用令牌；同时修掉侧栏高亮写死、看板 KPI 类名不匹配、分页参数用 `current`、翻页丢筛选、首页 CTA 无跳转、情绪面板数字写死、4 个 `@keyframes` 缺失、用户/AI 消息无法区分、Enter 不发送等问题（见 `CLAUDE.md` 三.9）。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。

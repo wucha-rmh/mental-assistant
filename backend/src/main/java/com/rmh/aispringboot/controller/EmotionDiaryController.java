@@ -60,7 +60,7 @@ public class EmotionDiaryController {
      * 我的情绪日记分页（当前登录用户）
      *
      * <p>与后台列表共用同一套查询：{@code userId} 强制取登录态，前端无法指定，
-     * 因此不可能看到别人的日记；筛选只保留心情区间 {@code moodScreRange}。
+     * 因此不可能看到别人的日记；可选 {@code diaryDate} 用来精确取某一天（编辑时判断新增还是更新）。
      */
     @GetMapping("/page")
     public Result<Page<EmotionDiaryAdminItemDTO>> myPage(
@@ -69,12 +69,13 @@ public class EmotionDiaryController {
             @RequestParam(required = false) Integer current,
             @RequestParam(required = false) Integer pageSize,
             @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String moodScreRange) {
+            @RequestParam(required = false) String moodScreRange,
+            @RequestParam(required = false) String diaryDate) {
 
         Long userId = SecurityUserUtil.currentUser().getId();
         int page = WebParamUtil.page(pageNum, currentPage, current, DEFAULT_PAGE);
         int pageSizeValue = WebParamUtil.size(pageSize, size, DEFAULT_SIZE);
-        return Result.ok(emotionDiaryService.adminPage(page, pageSizeValue, String.valueOf(userId), moodScreRange));
+        return Result.ok(emotionDiaryService.userPage(page, pageSizeValue, userId, moodScreRange, diaryDate));
     }
 
     /**
@@ -87,6 +88,19 @@ public class EmotionDiaryController {
     public Result<EmotionDiaryAdminItemDTO> saveDiary(@Valid @RequestBody EmotionDiaryCreateCommandDTO command) {
         Long userId = SecurityUserUtil.currentUser().getId();
         return Result.ok(emotionDiaryService.saveDiary(userId, command));
+    }
+
+    /**
+     * 删除自己的日记（登录用户）
+     *
+     * <p>服务层按「日记主键 + 登录用户」双条件校验，删不到别人的记录；
+     * 与后台的 {@code DELETE /admin/{id}} 是两条独立路径，权限互不影响。
+     */
+    @DeleteMapping("/{id}")
+    public Result<Void> deleteMyDiary(@PathVariable("id") Long id) {
+        Long userId = SecurityUserUtil.currentUser().getId();
+        emotionDiaryService.deleteOwnDiary(id, userId);
+        return Result.ok();
     }
 
     /**

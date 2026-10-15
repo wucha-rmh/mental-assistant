@@ -50,15 +50,39 @@ public class EmotionDiaryService {
      *                       （前端参数名就是 {@code moodScreRange}，此处沿用以保持兼容）
      */
     public Page<EmotionDiaryAdminItemDTO> adminPage(int page, int size, String userId, String moodScreRange) {
+        return query(page, size, WebParamUtil.parseLong(userId), moodScreRange, null);
+    }
+
+    /**
+     * 用户端「我的记录」分页
+     *
+     * <p>{@code userId} 由登录态传入（不接受前端指定），因此不可能查到别人的日记；
+     * {@code diaryDate} 可选，用来精确取某一天的记录（前端编辑某天时用它判断「已有/新增」）。
+     */
+    public Page<EmotionDiaryAdminItemDTO> userPage(int page, int size, Long userId, String moodScreRange, String diaryDate) {
+        return query(page, size, userId, moodScreRange, parseFilterDate(diaryDate));
+    }
+
+    /**
+     * 情绪日记分页查询（后台与用户端共用）
+     *
+     * @param userIdValue   用户ID，null 表示不过滤
+     * @param moodScreRange 心情区间，形如 {@code 1-3}
+     * @param diaryDate     具体日期，null 表示不过滤
+     */
+    private Page<EmotionDiaryAdminItemDTO> query(int page, int size, Long userIdValue,
+                                                 String moodScreRange, LocalDate diaryDate) {
         LambdaQueryWrapper<EmotionDiary> wrapper = Wrappers.lambdaQuery(EmotionDiary.class);
 
-        Long userIdValue = WebParamUtil.parseLong(userId);
         if (userIdValue != null) {
             wrapper.eq(EmotionDiary::getUserId, userIdValue);
         }
         int[] moodRange = parseMoodRange(moodScreRange);
         if (moodRange != null) {
             wrapper.between(EmotionDiary::getMoodScore, moodRange[0], moodRange[1]);
+        }
+        if (diaryDate != null) {
+            wrapper.eq(EmotionDiary::getDiaryDate, diaryDate);
         }
         wrapper.orderByDesc(EmotionDiary::getDiaryDate).orderByDesc(EmotionDiary::getId);
 
@@ -140,7 +164,38 @@ public class EmotionDiaryService {
         emotionDiaryMapper.deleteById(id);
     }
 
+    /**
+     * 删除自己的日记（用户端）
+     *
+     * <p>「不存在」与「不属于当前用户」返回同一句提示，避免用 id 探测别人有没有这条日记。
+     */
+    public void deleteOwnDiary(Long id, Long userId) {
+        EmotionDiary diary = emotionDiaryMapper.selectById(id);
+        if (diary == null || userId == null || !userId.equals(diary.getUserId())) {
+            throw new BusinessException("日记不存在或无权访问");
+        }
+        emotionDiaryMapper.deleteById(id);
+    }
+
     // ── 内部工具 ────────────────────────────────────────────────────
+
+    /**
+     * 解析「筛选用的日期」：空白返回 null（表示不按日期过滤），格式非法直接报错
+     */
+    private LocalDate parseFilterDate(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.length() > 10) {
+            trimmed = trimmed.substring(0, 10);
+        }
+        try {
+            return LocalDate.parse(trimmed);
+        } catch (DateTimeParseException e) {
+            throw new BusinessException("日期格式不正确，应为 yyyy-MM-dd");
+        }
+    }
 
     /**
      * 解析日记日期：空白按服务器当天；纯日期或带时间的字符串都取前 10 位

@@ -14,17 +14,34 @@
         <div class="content">
             <!-- 情绪评分 -->
             <div class="diary-card">
-                <div class="title">今日情绪评分</div>
-                <!-- 同一天只保留一条：把「会更新而不是新增」这件事明确说出来，避免误以为被覆盖 -->
-                <div v-if="todayDiary" class="today-hint">
+                <div class="title">情绪记录</div>
+                <!-- 该日期已有记录时说明「保存=更新」，避免误以为新增了一条 -->
+                <div v-if="existingDiary" class="today-hint">
                     <el-icon><InfoFilled /></el-icon>
                     <span>
-                        你今天（{{ todayDiary.diaryDate }}）已经记录过一篇了，保存会<strong>更新这一篇</strong>，不会新增；
-                        上次更新于 {{ todayDiary.updatedAt }}
+                        {{ existingDiary.diaryDate }} 已经记录过一篇了，保存会<strong>更新这一篇</strong>（不会新增）；
+                        上次更新于 {{ existingDiary.updatedAt }}
                     </span>
                 </div>
+                <div v-else class="today-hint is-new">
+                    <el-icon><InfoFilled /></el-icon>
+                    <span>{{ diaryForm.diaryDate }} 还没有记录，保存后会<strong>新增一篇</strong></span>
+                </div>
+                <div class="form-group date-group">
+                    <div class="form-label">记录日期</div>
+                    <el-date-picker
+                        v-model="diaryForm.diaryDate"
+                        type="date"
+                        value-format="YYYY-MM-DD"
+                        placeholder="选择日期"
+                        :clearable="false"
+                        :disabled-date="disableFutureDate"
+                        @change="syncExistingDiary"
+                    />
+                    <span class="date-tip">同一天只保留一篇：想更正以前的记录，直接选那一天即可</span>
+                </div>
                 <div class="section">
-                    <p>您今天的整体情绪状态如何？（1-10 分）</p>
+                    <p>这一天的整体情绪状态如何？（1-10 分）</p>
                     <div class="rate">
                         <el-rate
                             v-model="diaryForm.moodScore"
@@ -90,7 +107,7 @@
                     <div class="action-buttons">
                         <el-button @click="resetForm">重置</el-button>
                         <el-button type="primary" @click="submit">
-                            {{ todayDiary ? '更新今日记录' : '提交记录' }}
+                            {{ existingDiary ? '更新这篇记录' : '保存记录' }}
                         </el-button>
                     </div>
                 </div>
@@ -125,6 +142,10 @@
                                 type="primary"
                                 @click="toggleExpand(item.id)"
                             >{{ expandedIds.includes(item.id) ? '收起' : '展开' }}</el-button>
+                            <span class="foot-actions">
+                                <el-button text type="primary" @click="startEdit(item)">编辑</el-button>
+                                <el-button text type="danger" @click="handleDelete(item)">删除</el-button>
+                            </span>
                         </div>
                     </div>
                     <div class="pagination-info" v-if="listTotal > listSize">
@@ -142,9 +163,9 @@
     </div>
 </template>
 <script setup>
-    import { dayjs, ElMessage } from 'element-plus'
+    import { dayjs, ElMessage, ElMessageBox } from 'element-plus'
     import { onMounted, reactive, ref } from 'vue'
-    import { addEmotionDiary, getMyEmotionDiaries } from '@/api/frontend'
+    import { addEmotionDiary, deleteMyEmotionDiary, getMyEmotionDiaries } from '@/api/frontend'
 
     // 情绪评分
     const emotionStatus = ['绝望崩溃', '消沉抑郁', '焦虑烦躁', '低落不悦', '平静淡然', '轻松惬意', '愉悦舒心', '欢欣满足', '兴奋欣喜', '极致幸福']
@@ -175,11 +196,11 @@
         stressLevel: null
     })
 
-    // 今天已有的那条记录（后端按 (user_id, diary_date) 唯一：一天一条，重复提交=更新今天这条）
-    const todayDiary = ref(null)
+    // 当前所选日期已有的记录（null = 该日期还没有记录，保存会新增）
+    const existingDiary = ref(null)
 
-    const emptyForm = () => ({
-        diaryDate: dayjs().format('YYYY-MM-DD'),
+    const emptyForm = (date) => ({
+        diaryDate: date || dayjs().format('YYYY-MM-DD'),
         moodScore: null,
         dominantEmotion: '',
         emotionTriggers: '',
@@ -188,7 +209,7 @@
         stressLevel: null
     })
 
-    // 把某条记录回填到表单（用于「编辑今天这条」）
+    // 把某条记录回填到表单（用于编辑已有日记）
     const fillForm = (item) => {
         Object.assign(diaryForm, {
             diaryDate: item.diaryDate,
@@ -201,12 +222,36 @@
         })
     }
 
-    // 重置：有今天的记录就恢复成已保存的内容，否则清空
+    // 不允许选未来日期（日记是记录已经发生的心情）
+    const disableFutureDate = (date) => date.getTime() > Date.now()
+
+    /**
+     * 按「所选日期」查一次后端：
+     * 有记录 → 回填表单（等于「在这篇的基础上编辑」）；没有 → 清空表单（等于新增）。
+     */
+    const syncExistingDiary = () => {
+        const date = diaryForm.diaryDate
+        return getMyEmotionDiaries({ pageNum: 1, pageSize: 1, diaryDate: date })
+            .then(res => {
+                const found = (res && res.records && res.records[0]) || null
+                existingDiary.value = found
+                if (found) {
+                    fillForm(found)
+                } else {
+                    Object.assign(diaryForm, emptyForm(date))
+                }
+            })
+            .catch(() => {
+                existingDiary.value = null
+            })
+    }
+
+    // 重置：该日期有记录就恢复成已保存的内容，否则清空
     const resetForm = () => {
-        if (todayDiary.value) {
-            fillForm(todayDiary.value)
+        if (existingDiary.value) {
+            fillForm(existingDiary.value)
         } else {
-            Object.assign(diaryForm, emptyForm())
+            Object.assign(diaryForm, emptyForm(diaryForm.diaryDate))
         }
     }
 
@@ -216,15 +261,50 @@
             return
         }
         addEmotionDiary(diaryForm).then((saved) => {
-            ElMessage.success(todayDiary.value ? '今日记录已更新' : '提交成功')
-            // 后端返回的就是落库后的那条：用它同步「今天是否已记录」与表单内容
+            ElMessage.success(existingDiary.value ? '这篇记录已更新' : '记录成功')
+            // 后端返回的就是落库后的那条：用它同步「该日期是否已有记录」与表单内容
             if (saved) {
-                todayDiary.value = saved
+                existingDiary.value = saved
                 fillForm(saved)
             }
-            // 提交后回到列表第一页，立刻能看到刚才写的那一篇
+            // 回到列表第一页，立刻能看到刚才写的这一篇
             listPage.value = 1
             fetchDiaryList()
+        })
+    }
+
+    // 列表里点「编辑」：把这篇载入表单（可以改任何一天，不只是今天）
+    const startEdit = (item) => {
+        fillForm(item)
+        existingDiary.value = item
+        expandedIds.value = expandedIds.value.includes(item.id) ? expandedIds.value : [...expandedIds.value, item.id]
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        ElMessage.info(`正在编辑 ${item.diaryDate} 的记录`)
+    }
+
+    // 列表里点「删除」
+    const handleDelete = (item) => {
+        ElMessageBox.confirm(
+            `确定删除 ${item.diaryDate} 的这篇日记吗？删除后不可恢复。`,
+            '删除确认',
+            { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
+        ).then(() => {
+            deleteMyEmotionDiary(item.id).then(() => {
+                ElMessage.success('已删除')
+                // 删掉的正是表单当前这一天 → 表单回到「新增」状态
+                if (diaryForm.diaryDate === item.diaryDate) {
+                    existingDiary.value = null
+                    Object.assign(diaryForm, emptyForm(item.diaryDate))
+                }
+                expandedIds.value = expandedIds.value.filter(id => id !== item.id)
+                // 当前页可能被删空，回退一页再刷新
+                if (diaryList.value.length === 1 && listPage.value > 1) {
+                    listPage.value -= 1
+                }
+                fetchDiaryList()
+            })
+        }).catch(() => {
+            // 取消删除 / 接口失败（提示已由 request.js 统一处理）
         })
     }
 
@@ -236,34 +316,12 @@
     const listTotal = ref(0)
     const expandedIds = ref([])
 
-    // 只在首次加载时用「今天那条」回填表单，避免用户正在输入时被列表刷新覆盖
-    let formPrefilled = false
-
-    /**
-     * 同步「今天是否已记录」。
-     * 列表按 diaryDate 倒序，今天那条（若有）必然在第 1 页，所以只有第 1 页的结果才是有效依据，
-     * 否则翻到第 2 页会把提示错误地清掉。
-     */
-    const syncTodayDiary = (records, page) => {
-        if (page !== 1) return
-        const today = dayjs().format('YYYY-MM-DD')
-        const found = (records || []).find(item => item.diaryDate === today) || null
-        todayDiary.value = found
-        if (!formPrefilled) {
-            formPrefilled = true
-            if (found) {
-                fillForm(found)
-            }
-        }
-    }
-
     const fetchDiaryList = () => {
         listLoading.value = true
         getMyEmotionDiaries({ pageNum: listPage.value, pageSize: listSize })
             .then(res => {
                 diaryList.value = (res && res.records) || []
                 listTotal.value = (res && res.total) || 0
-                syncTodayDiary(diaryList.value, listPage.value)
             })
             .catch(() => {
                 diaryList.value = []
@@ -282,6 +340,8 @@
 
     onMounted(() => {
         fetchDiaryList()
+        // 打开页面先看「今天」有没有记录：有就回填，方便直接编辑今天这篇
+        syncExistingDiary()
     })
 
     const iconUrl = new URL('@/assets/images/like.png', import.meta.url).href
@@ -426,6 +486,13 @@
                     margin-top: var(--mh-space-3);
                     font-size: var(--mh-font-2);
                     color: var(--mh-text-3);
+
+                    .foot-actions {
+                        display: flex;
+                        align-items: center;
+                        gap: var(--mh-space-1);
+                        margin-left: auto;
+                    }
                 }
             }
         }
@@ -452,6 +519,34 @@
 
             strong {
                 color: var(--mh-primary);
+            }
+
+            /* 「这一天还没有记录」用薄荷色区分，避免和「已存在」的提示混淆 */
+            &.is-new {
+                background: var(--mh-mint-light-9);
+                border-color: var(--mh-mint-light-7);
+
+                .el-icon,
+                strong {
+                    color: var(--mh-mint-dark-2);
+                }
+            }
+        }
+
+        .date-group {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--mh-space-3);
+            margin-bottom: var(--mh-space-4);
+
+            .form-label {
+                margin-bottom: 0;
+            }
+
+            .date-tip {
+                font-size: var(--mh-font-1);
+                color: var(--mh-text-3);
             }
         }
 

@@ -20,6 +20,14 @@ logs/
 .acl-recovery/
 .db-backup/
 
+# 仅本机留存（不进 GitHub）：开发过程文档、接口契约与部署脚本
+# 需要放回仓库时删掉这几行再 git add -f 即可
+/CLAUDE.md
+/backend/README.md
+/backend/AI功能分析.md
+/docs/
+/deploy/
+
 # 临时调试产物（脚本、请求体、恢复出来的上下文等）
 .tmp*
 .tmp-*

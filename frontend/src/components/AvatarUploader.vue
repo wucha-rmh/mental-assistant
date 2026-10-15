@@ -3,7 +3,7 @@
       头像上传：无可见 DOM，父组件通过 ref 调用 pick() 打开文件选择框。
       管理员导航栏与前台头部共用这一份上传/校验/写 store 的逻辑。
     -->
-    <input ref="inputRef" class="avatar-file-input" type="file" accept="image/*" @change="handleChange" />
+    <input ref="inputRef" class="avatar-file-input" type="file" accept=".jpg,.jpeg,.png,.gif,.bmp,.webp" @change="handleChange" />
 </template>
 
 <script setup>
@@ -14,6 +14,9 @@ import { useUserStore } from '@/stores/user'
 
 /** 头像大小上限（MB） */
 const MAX_SIZE_MB = 5
+
+/** 与后端 FileStorageService 的上传白名单保持一致（svg 也能内嵌脚本，所以不在名单里） */
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']
 
 const userStore = useUserStore()
 const inputRef = ref(null)
@@ -36,8 +39,9 @@ const handleChange = async (event) => {
     if (!file) {
         return
     }
-    if (!file.type.startsWith('image/')) {
-        ElMessage.warning('请选择图片文件')
+    const extension = (file.name.split('.').pop() || '').toLowerCase()
+    if (!ALLOWED_EXTENSIONS.includes(extension)) {
+        ElMessage.warning('只支持 jpg / jpeg / png / gif / bmp / webp 图片')
         return
     }
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {

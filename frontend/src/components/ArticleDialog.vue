@@ -32,7 +32,7 @@
                         :before-upload="beforeUpload"
                         :http-request="handleUploadRequest"
                         :show-file-list="false"
-                        accept="image/*"
+                        accept=".jpg,.jpeg,.png,.gif,.bmp,.webp"
                     >
                         <div v-if="!imgUrl" class="cover-placeholder">
                             <p>点击上传封面</p>

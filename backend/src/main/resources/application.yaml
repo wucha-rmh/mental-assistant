@@ -1,8 +1,10 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/mental_health_assistant?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: 123456
+    # 生产：用环境变量覆盖（DB_HOST / DB_PORT / DB_USERNAME / DB_PASSWORD）
+    # 本机：真实口令写在 application-local.yaml（已 gitignore），不要写回这个受 git 跟踪的文件
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/mental_health_assistant?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
   profiles:
     include: local
   # 上传文件大小上限（Spring 默认只有 1MB，会让前端的「5MB 提示」名不副实）
@@ -29,7 +31,10 @@ server:
 
 # JWT配置
 jwt:
-  secret: MySecretKeyForJWT2025!@#$%^&*()_+SecureKeyHere
+  # ⚠️ 不再写明文：本机放 application-local.yaml，生产用环境变量 JWT_SECRET（建议 48 位以上随机串）
+  # 旧值 MySecretKeyForJWT2025... 已随 git 历史泄露（等同公开）——拿到它就能伪造任意用户（含管理员）的 token，
+  # 所以永远不要再启用；留空或过短会启动失败，见 JwtConfig#validateSecret
+  secret: ${JWT_SECRET:}
   expiration: 86400000  # 24小时（毫秒）
   refresh-expiration: 604800000  # 7天（毫秒）
   header: Authorization  # token头部名称

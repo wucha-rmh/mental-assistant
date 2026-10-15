@@ -74,6 +74,22 @@ mysql -uroot -p123456 mental_health_assistant < db/schema.sql
 > `db/schema.sql` **不含** `CREATE DATABASE` / `USE`（所以 `source` 时不会误灌到别的库），也**不含数据**。
 > 改完表结构（`ALTER TABLE`、新增实体）**必须重新导出并提交**，否则仓库与真实库会漂移。详见踩坑 13。
 
+### 环境变量与本地配置（2026-10-15 起敏感信息不再入库）
+
+`backend/src/main/resources/application.yaml` **不再含任何口令**，全部写成占位符，真实值只放在下面两处：
+
+| 变量 | 说明 |
+|---|---|
+| `JWT_SECRET` | JWT 签名密钥，**必须 ≥ 32 位**，否则后端启动直接失败（`config/JwtConfig.java` 的 `@PostConstruct` 校验）。生成：`openssl rand -base64 48` |
+| `DB_HOST` / `DB_PORT` / `DB_USERNAME` / `DB_PASSWORD` | 数据库连接（占位符默认 `localhost` / `3306` / `root` / 空） |
+| `SPRING_AI_OPENAI_API_KEY` | DeepSeek API Key（也可以继续放 `application-local.yaml`） |
+
+- **本机开发**：真实值写进 `backend/src/main/resources/application-local.yaml`（已 gitignore）。
+  除了原有的 `spring.ai.openai.api-key`，现在还需要 `spring.datasource.password` 与 `jwt.secret`，否则**起不来**。
+- **优先级：环境变量 > `application-local.yaml` > `application.yaml`**（Spring 属性源顺序）。
+  所以生产只设环境变量就能覆盖；本机也可以用它做负向验证（见踩坑 16）。
+- 线上部署全套（规格、systemd、Nginx/SSE、HTTPS、安全清单、自检）见 `docs/deploy.md`，模板在 `deploy/`。
+
 ---
 
 ## 三、关键约定（必须遵守）
@@ -102,6 +118,14 @@ mysql -uroot -p123456 mental_health_assistant < db/schema.sql
     删除会话与情绪分析仍严格校验归属（管理员不能动别人的会话）。
 - **注册接口不接受 `userType`**（2026-10-15 修复提权漏洞）：请求体里带 `"userType": 2` 会被 Jackson 忽略，
   `UserConvert` 固定写 `UserType.USER.getCode()`（=1）→ 注册出来的**永远是普通用户**。加用户字段时别在注册 DTO 上开口子。
+- **token 异常一律 `HTTP 401 + {"code":"A0230","msg":"token无效"}`**：`util/JwtAuthenticationFilter.java` 里那段
+  `try { ... } catch (Exception e)` **不能删** —— `validateToken` 对「签名不匹配 / 已过期 / issuer 不符」抛
+  `JWTVerificationException`，`getUserById` 对「已被删除的用户」抛 `BusinessException`，
+  漏给 Tomcat 就变成 **HTTP 500 + Spring 默认错误体**（前端拿不到 msg，也不会自动回登录页）。没带 token 仍是 `A0301`。详见踩坑 15。
+- **登录失败限流**：`service/LoginAttemptLimiter.java` —— 同一「用户名 + 客户端 IP」连续失败 **5 次锁 15 分钟**
+  （提示 `登录失败次数过多，账号已被临时锁定，请 N 分钟后再试`），登录成功清零；「用户被禁用」不计入失败。
+  键里的 IP 只取 `request.getRemoteAddr()`、**故意不信 `X-Forwarded-For`**（请求头可伪造 = 给攻击者「换个 IP 就重置计数」的开关）。
+  进程内实现：重启即清空、多实例部署要换共享存储；按来源 IP 的那层限流交给 Nginx（`deploy/nginx.conf.example` 的 `limit_req_zone`）。
 
 ### 3. 端口与代理
 
@@ -121,7 +145,11 @@ mysql -uroot -p123456 mental_health_assistant < db/schema.sql
 - **不要**再引入外部图床/文件服务器的绝对地址（历史上 `159.75.169.224:1235` 那台是别人部署的另一份同项目，文件路径取不到图）
 - **单文件上限 5MB**（`spring.servlet.multipart.max-file-size: 5MB` / `max-request-size: 10MB`，2026-10-15 加；改动前走 Spring 默认 1MB，上传 2MB 会得到 **HTTP 413 + 空响应体**，见踩坑 14）。
   超限由 `common/GlobalExceptionHandler` 转成统一响应体 `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`（HTTP 200）。
-- ⚠️ **没有类型白名单**，且 `/files/**` 匿名可读、按静态资源直出 —— 别把 `.html`/`.svg` 之类的可执行内容放上去（接入公网前必须补白名单）
+- **有扩展名白名单**（2026-10-15 补，`service/FileStorageService.java`）：只收 `jpg/jpeg/png/gif/bmp/webp` 与 `mp4/webm`，
+  其余（含 `.html`、`.svg`、以及没有扩展名的文件）一律抛 `BusinessException("不支持的文件类型（.xxx），仅支持图片 … 与视频 …")`。
+  `svg` 被**刻意排除**：它能内嵌 `<script>`，而 `/files/**` 是匿名可读的静态直出，同源脚本能读走 `localStorage` 里的 JWT。
+  `frontend/src/components/AvatarUploader.vue` 与 `ArticleDialog.vue` 的 `accept`、提示文案已同步。
+- 网关层再加一层纵深防御（模板已写）：`nosniff` + CSP `sandbox` + 直接拒绝脚本后缀，见 `deploy/nginx.conf.example` 的 `location /files/`
 
 ### 5. 分页与 sessionId
 
@@ -286,7 +314,7 @@ ERROR ... Unable to handle the Spring Security Exception because the response is
 
 ### 11. 🟡 git：只有一个仓库（2026-10-15 起 `backend/` 已并入根仓库）
 
-- 现在**只有一个仓库**：`D:\mental_health_assistant\.git`，纳管 `frontend/`、`backend/`、`docs/`、`CLAUDE.md`、`README.md`、根 `.gitignore`（受跟踪文件 136 个）。
+- 现在**只有一个仓库**：`D:\mental_health_assistant\.git`，纳管 `frontend/`、`backend/`、`docs/`、`CLAUDE.md`、`README.md`、根 `.gitignore`（受跟踪文件 140+ 个）。
 - `backend/` 原本是独立仓库（remote `mental-health-assistant`），2026-10-15 用 **subtree** 方式并入根仓库：
   **后端原有提交历史都还在**（`git log --oneline` 能看到 `cfa36dc`、`a87496c`、`f4c4c94` 等），合并提交是 `574b3dc` + 收尾提交 `d0abeff`，工作树干净。
 - 查后端**单个文件**的历史要回到旧路径空间查：`git log --oneline f4c4c94 -- pom.xml`（`f4c4c94` 是并入前的最后一个后端提交）。
@@ -341,6 +369,31 @@ curl.exe -s -X POST http://localhost:1236/api/user/login -H "Content-Type: appli
 > 用 curl 复现/验证要 `-F "file=@<file>;type=image/png" -F businessType=ARTICLE -F businessId=xxx`，
 > 大文件用 `[System.IO.File]::WriteAllBytes($path, (New-Object byte[] (6MB)))` 造，别用文本写入（会带 BOM 且大小不准）。
 
+### 15. 🔴 过滤器里漏出的异常会变成 **HTTP 500 + Spring 默认错误体**
+
+`common/GlobalExceptionHandler` 只兜 **Controller 抛出的异常**。过滤器（`util/JwtAuthenticationFilter.java`）里抛出的异常
+直接冒到 Tomcat，响应体是 `{"timestamp":...,"status":500,"error":"Internal Server Error","path":...}`，
+**不是统一响应体**，前端拦截器读不到 `msg`（用户只看到「服务器开小差了」，也不会被踢回登录页）。
+
+实测会踩到的两种：
+1. `JwtTokenUtil.validateToken` 对签名不匹配 / 已过期 / issuer 不符抛 `JWTVerificationException`
+   —— **轮换 `jwt.secret` 之后，用户手里的旧 token 全部走这条路**（修复前实测就是 500）；
+2. `UserService.getUserById` 对「已被删除的用户」抛 `BusinessException("用户不存在")`
+   —— token 合法但里面的 userId 指向不存在的用户时触发。
+
+现在「验证 token → 查用户 → 写认证信息」整段包在同一个 `try/catch` 里，统一回落到 `A0230`（HTTP 401）。
+新增过滤器时记住：**过滤器里的异常没有兜底，必须自己 catch 成统一响应体**。
+
+### 16. 🟡 `application-local.yaml` 里的值会被环境变量覆盖（拿来做负向验证很方便）
+
+Spring 属性源优先级：**命令行参数 > OS 环境变量 > profile 专属配置文件（`application-local.yaml`）> `application.yaml`**。所以：
+
+- 生产环境只要设 `JWT_SECRET` / `DB_PASSWORD` 就能盖掉打包进 jar 的值；
+- 想验证「密钥太短必须拒绝启动」，不必改文件，直接：
+  `$env:JWT_SECRET='tooshort'; mvn -B spring-boot:run`，稳定复现
+  `Caused by: java.lang.IllegalStateException: jwt.secret 未配置或长度不足 32 位…`（实测 120s 内进程退出）。
+  ⚠️ 注意 Windows 下把环境变量设成**空串等于删掉它**（会退回配置文件的值），要用一个「长度不足」的非空值来做这个测试。
+
 ---
 
 ## 五、端到端验证流程
@@ -382,7 +435,7 @@ taskkill //F //PID <pid>
 |---|---|
 | 情绪分析 | ✅ 已接入 AI（`AiService/EmotionAnalysisService.java`）：结果落 `consultation_session.last_emotion_analysis`，缓存覆盖最后一条消息时复用、有新消息则重算；无消息或调用失败退回 `SessionEmotionDTO.defaultValue()` 且不写缓存。⚠️ 2026-10-15 起**前端不再展示**（咨询页的「情绪花园」已删，接口与落库逻辑保留，见 `docs/api-contract.md` 2.2） |
 | 会话状态流转 | 实体没有 `status`/`endedAt` 字段 |
-| Token 服务端失效 | JWT 无状态，退出仅清前端缓存 |
+| Token 服务端失效 | 🟡 JWT 无状态：**退出登录**只清前端缓存，服务端并不知道（要真失效得加黑名单或「短过期 + refresh」）。注意与「禁用用户」区分——后者是**立即失效**的（`JwtAuthenticationFilter` 每请求查库校验 `status`，见三.2） |
 | AI 对话记忆 | ✅ 已于 2026-10-15 做到「重启不失忆」：`AiService/PsychologicalSupportService.java` 的 `@Autowired ChatMemory chatMemory` 与 advisor 共用同一个 `MessageWindowChatMemory`，`ensureMemoryLoaded(...)` 在该会话重启后第一次 `/stream` 时从 `consultation_message` 回灌最近 30 条；仍未做的是持久化记忆仓库（Spring AI 2.1.0-M1 只自带 `InMemoryChatMemoryRepository`，没有 JDBC 版 `ChatMemoryRepository`），所以被删会话的记忆会短暂留在进程内。详见 `docs/api-contract.md` 2.2 |
 | 历史图片缺失 | 7 篇文章封面已于 2026-10-15 补齐（本地生成，经 `POST /api/file/upload` 挂到 `cover_image`）；`user.avatar` 只有 admin/tester 有（联调测试留下的），其余用户显示默认头像；旧服务器那批原始文件已清库、不可恢复 |
 | 头像裁剪/缩略图 | 上传的原图直接当头像，不生成多尺寸；前端只校验类型与 5MB 大小 |
@@ -396,8 +449,12 @@ taskkill //F //PID <pid>
 | 注册提权 | ✅ 2026-10-15 修复：注册请求体不再接收 `userType`，固定建普通用户（见三.2） |
 | 上传上限与异常兜底 | ✅ 2026-10-15：multipart 上限 1MB → 5MB、超限返回统一响应体 `5004`、`GlobalExceptionHandler` 增补 `Exception` 兜底（见三.4） |
 | 用户管理 | ✅ 2026-10-15 实现：管理员可看**用户列表**（关键字/状态/类型筛选 + 分页）并**禁用/启用**账号 —— `GET /api/user/admin/page`、`PUT /api/user/admin/{id}/status`（都走 `SecurityUserUtil.requireAdmin()`，新增 `DTO/command/UserStatusUpdateCommandDTO.java`），后台页面 `frontend/src/views/users.vue`（路由 `/back/users`）。「禁用立即生效」靠三.2 的过滤器状态校验，未新增禁用逻辑；管理员不能改自己的状态。详见 `docs/api-contract.md` 2.1 |
-| 登录限流 / CORS / 上传类型白名单 | ⬜ 2026-10-15 缺陷审计发现、尚未处理：登录接口公开且无限流/锁定；后端无任何 CORS 配置；上传无类型白名单且 `/files/**` 匿名可读 |
-| git 仓库 | ✅ 2026-10-15 起**只有一个仓库**（工作区根），`backend/` 已用 subtree 方式并入（后端原有提交历史保留），受跟踪文件 136 个；根仓库**无 remote**（未 push），旧后端 GitHub 仓库保留作归档。详见踩坑 11 |
+| JWT 密钥 / 数据库口令入库 | ✅ 2026-10-15 修复：`application.yaml` 只留 `${JWT_SECRET:}`、`${DB_PASSWORD:}` 占位符，真实值在 gitignored 的 `application-local.yaml`，生产走环境变量；`config/JwtConfig.java` 启动时强制校验密钥 ≥ 32 位。⚠️ 旧密钥已随 git 历史泄露，**绝不要复用**（见二「环境变量与本地配置」） |
+| 登录限流 | ✅ 2026-10-15：`service/LoginAttemptLimiter.java` —— 同账号连错 5 次锁 15 分钟（应用层按账号）；按来源 IP 的 `limit_req` 模板在 `deploy/nginx.conf.example` |
+| 上传类型白名单 | ✅ 2026-10-15：`service/FileStorageService.java` 只收 `jpg/jpeg/png/gif/bmp/webp` + `mp4/webm`，`.html`/`.svg` 直接拒绝（见三.4）；前端 `accept` 同步 |
+| CORS | ⬜ 仍未配置，且**同域部署不需要**（前端 baseURL 是 `/api`、`fileBaseUrl` 是空串）；只有前后端分域部署时才要补 |
+| 部署文档 | ✅ 2026-10-15：`docs/deploy.md` + `deploy/`（`mha.service`、`mha.env.example`、`nginx.conf.example`，含 SSE `proxy_buffering off`、登录 `limit_req`、`/files` 加固） |
+| git 仓库 | ✅ 2026-10-15 起**只有一个仓库**（工作区根），`backend/` 已用 subtree 方式并入（后端原有提交历史保留），受跟踪文件 140+ 个；根仓库**无 remote**（未 push），旧后端 GitHub 仓库保留作归档。详见踩坑 11 |
 
 ---
 

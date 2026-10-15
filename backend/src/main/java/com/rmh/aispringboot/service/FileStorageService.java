@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -52,10 +53,27 @@ public class FileStorageService {
     /** 临时文件保留时长（小时） */
     private static final long TEMP_EXPIRE_HOURS = 24L;
 
+    /**
+     * 允许落盘的扩展名白名单（**只有名单里的扩展名能上传**）。
+     *
+     * <p>这是安全边界，不是分类标签：{@code /files/**} 在 {@code SecurityConfig} 里是公开白名单，
+     * 浏览器按扩展名决定 Content-Type，所以只要允许 {@code .html} / {@code .svg} 这类文件，
+     * 上传物就会在自己域名下被当成页面执行（同源脚本能读走 localStorage 里的 token）。
+     * 因此这里只放「浏览器不会当页面执行」的位图与视频容器：
+     * 原先允许的 {@code svg}（可内嵌 script）、{@code avi/mov/wmv/flv/mkv}（无业务需求）已移除。
+     */
     private static final Set<String> IMAGE_EXTENSIONS =
-            Set.of("jpg", "jpeg", "png", "gif", "bmp", "webp", "svg");
+            Set.of("jpg", "jpeg", "png", "gif", "bmp", "webp");
     private static final Set<String> VIDEO_EXTENSIONS =
-            Set.of("mp4", "avi", "mov", "wmv", "flv", "mkv");
+            Set.of("mp4", "webm");
+    /** 允许上传的全部扩展名 */
+    private static final Set<String> ALLOWED_EXTENSIONS;
+
+    static {
+        Set<String> allowed = new HashSet<>(IMAGE_EXTENSIONS);
+        allowed.addAll(VIDEO_EXTENSIONS);
+        ALLOWED_EXTENSIONS = Set.copyOf(allowed);
+    }
 
     @Autowired
     private SysFileInfoMapper sysFileInfoMapper;
@@ -81,6 +99,12 @@ public class FileStorageService {
 
         String originalName = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
         String extension = extractExtension(originalName);
+        // 白名单校验：不在名单里的（含无扩展名的 html/htm/svg/js/xml...）一律拒绝
+        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            throw new BusinessException("不支持的文件类型"
+                    + (extension.isEmpty() ? "" : "（." + extension + "）")
+                    + "，仅支持图片 jpg / jpeg / png / gif / bmp / webp 与视频 mp4 / webm");
+        }
         String storedName = System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8)
                 + (extension.isEmpty() ? "" : "." + extension);
 

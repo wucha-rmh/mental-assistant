@@ -69,8 +69,14 @@ return Promise.reject(...)
 | 值 | 登录接口返回的 JWT 原文（**无 `Bearer ` 前缀**） |
 | 白名单 | `/`、`/error`、`/api/test`、`/api/user/login`、`/api/user/register`、`/api/user/logout` |
 | 未登录 / 无权限返回 | **HTTP 401** + `{"code":"A0301","msg":"访问未授权"}`（`ResponseUtil` 直写，不经过 `GlobalExceptionHandler`） |
-| token 无效 / 过期 | **HTTP 401** + `{"code":"A0230","msg":"token已过期"}` |
+| token 无效 / 过期 / 签名不匹配（例如 `jwt.secret` 轮换后用户手里的旧 token） | **HTTP 401** + `{"code":"A0230","msg":"token无效"}`。`util/JwtAuthenticationFilter.java` 把「验签 → 查用户 → 写认证」整段包在同一个 `try/catch` 里，异常统一回落成 `A0230`；漏出去就会变成 **HTTP 500 + Spring 默认错误体**（前端读不到 `msg`，也不会自动回登录页 —— 见 `CLAUDE.md` 踩坑 15） |
 | 账号被禁用 | **HTTP 401** + `{"code":"A0231","msg":"token已被禁止访问"}`。`JwtAuthenticationFilter` **每次请求**都会按 token 里的 `userId` 查一次库并校验 `status == 1`（`UserStatus.NORMAL`），所以管理员一禁用用户，他手里已签发的 token **立即失效**，不用等过期 |
+
+**登录失败限流（2026-10-15 加）**：同一「用户名 + 客户端 IP」连续失败 **5 次**即锁定 **15 分钟**，
+期间返回 `{"code":"6000","msg":"登录失败次数过多，账号已被临时锁定，请 N 分钟后再试"}`（HTTP 200）；登录成功即清零，
+「用户被禁用」不计入失败次数。实现见 `service/LoginAttemptLimiter.java`（进程内、重启即清空，多实例部署要换共享存储）；
+按来源 IP 的那层 `limit_req` 交给 Nginx（模板 `deploy/nginx.conf.example`）。
+该限流器键里的 IP 只取 `request.getRemoteAddr()`、**故意不信 `X-Forwarded-For`**（请求头可伪造，等于给攻击者一个「换个 IP 就重置计数」的开关）。
 
 ### 3. 分页
 
@@ -198,7 +204,7 @@ Content-Type: multipart/form-data
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `file` | file | 是 | 图片，**≤ 5MB**。上限由后端 multipart 强制（`spring.servlet.multipart.max-file-size: 5MB`），超限返回统一响应体 `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`（HTTP 200）。⚠️ 后端**没有**真实类型/扩展名白名单，只清洗扩展名字符（见 2.6） |
+| `file` | file | 是 | 图片，**≤ 5MB**。上限由后端 multipart 强制（`spring.servlet.multipart.max-file-size: 5MB`），超限返回统一响应体 `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`（HTTP 200）。扩展名必须落在白名单内（`jpg/jpeg/png/gif/bmp/webp`），否则返回 `{"code":"6000","msg":"不支持的文件类型（.xxx），仅支持图片 …"}`（见 2.6） |
 
 返回 `data`：**更新后的完整用户详情**（字段同登录响应的 `userInfo`，其中 `avatar` 是项目内相对路径）。
 
@@ -741,7 +747,7 @@ GET /api/data-analytics/overview                             （仅管理员）
 | 落盘 | `file.upload-dir`（`application.yaml`，默认 `./uploads`）下按业务分目录：`ARTICLE` → `bussiness/article/`、`USER_AVATAR` → `bussiness/user_avatar/`、未识别 → `temp/`（临时文件 `is_temp=1`、`status=0`、24 小时后过期） |
 | 文件名 | `<epochMillis>-<uuid8>.<ext>`，扩展名只保留字母数字（防路径穿越），不信任客户端文件名 |
 | 大小上限 | `spring.servlet.multipart.max-file-size: 5MB` + `max-request-size: 10MB`（`application.yaml`）。超限 → `{"code":"5004","data":null,"msg":"上传的文件过大，单个文件不能超过 5MB"}`（**HTTP 200**、统一响应体，由 `common/GlobalExceptionHandler` 的 `MaxUploadSizeExceededException` 处理）。⚠️ 2026-10-15 之前没有 multipart 配置 → 走 Spring 默认 1MB，实测上传 2MB 得到 **HTTP 413 + 空响应体**（前端读不到 `msg`） |
-| 类型校验 | ⚠️ **没有**扩展名 / `Content-Type` 白名单（`FileStorageService.store` 只把扩展名清洗成字母数字）。又因为 `/files/**` 匿名可读且按静态资源直出，上传 `.html`/`.svg` 会被浏览器当页面/脚本执行 —— 接入公网前必须补白名单 |
+| 类型校验 | ✅ 2026-10-15 起是**扩展名白名单**（`FileStorageService.ALLOWED_EXTENSIONS`）：只收 `jpg`/`jpeg`/`png`/`gif`/`bmp`/`webp` 与 `mp4`/`webm`，其余（含 `.html`、`.svg`、以及没有扩展名的文件）一律 `{"code":"6000","msg":"不支持的文件类型（.xxx），仅支持图片 jpg / jpeg / png / gif / bmp / webp 与视频 mp4 / webm"}`。`svg` 被**刻意排除**：它能内嵌 `<script>`，而 `/files/**` 匿名可读且按静态资源直出，同源脚本能读走 `localStorage` 里的 JWT；网关层再叠 `nosniff` + CSP `sandbox` + 拒绝脚本后缀（`deploy/nginx.conf.example`） |
 | 响应 | `{"id":57,"originalName":"...","filePath":"/files/bussiness/article/1792046226236-6c6d204b.svg","fileSize":871,"fileType":"IMG","businessType":"ARTICLE","businessId":"...","businessField":"cover"}` |
 | 元数据 | 同时写入 `sys_file_info`（`file_path` 存相对路径，`file_type` 取 `IMG`/`VIDEO`/`DOC`，`upload_user_id` 取当前登录用户） |
 
@@ -810,7 +816,12 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 注册提权 | ✅ 2026-10-15 修复：注册请求体不再接收 `userType`，固定建普通用户（见 2.1） |
 | 上传大小与异常兜底 | ✅ 2026-10-15：multipart 上限 1MB → 5MB、`MaxUploadSizeExceededException` 转统一响应体 `5004`、`GlobalExceptionHandler` 增补 `Exception` 兜底（见 2.6） |
 | 用户列表与状态管理 | ✅ 2026-10-15 实现（见 2.1）：管理员可看用户列表（关键字/状态/类型筛选 + 分页）并禁用/启用账号；禁用立即生效（登录被拦 + 已签发 token 返回 `A0231`），管理员不能改自己的状态 |
-| 登录限流 / CORS / 上传类型白名单 | ⬜ 2026-10-15 缺陷审计发现的剩余项，尚未处理：登录接口公开且无限流/锁定；后端无任何 CORS 配置；上传无类型白名单且 `/files/**` 匿名可读 |
+| JWT 密钥 / 数据库口令入库 | ✅ 2026-10-15 修复：`application.yaml` 只留 `${JWT_SECRET:}`/`${DB_PASSWORD:}` 占位符，真实值在 gitignored 的 `application-local.yaml`，生产走环境变量；`config/JwtConfig.java` 启动时强制校验密钥 ≥ 32 位。⚠️ 旧密钥已随 git 历史泄露，**绝不复用**（见 `CLAUDE.md` 二） |
+| 登录限流 | ✅ 2026-10-15：`service/LoginAttemptLimiter.java`（同账号连错 5 次锁 15 分钟，见 一.2）；按来源 IP 的 `limit_req` 模板见 `deploy/nginx.conf.example` |
+| 上传类型白名单 | ✅ 2026-10-15：只收 `jpg/jpeg/png/gif/bmp/webp` + `mp4/webm`，`.html`/`.svg` 直接拒（见 2.6），前端 `accept` 同步 |
+| 过滤器异常兜底 | ✅ 2026-10-15：token 验签失败 / 用户已被删除不再冒成 **HTTP 500**，统一 `A0230`（HTTP 401，见 一.2 与 `CLAUDE.md` 踩坑 15） |
+| 部署文档与模板 | ✅ 2026-10-15：`docs/deploy.md` + `deploy/`（`mha.service`、`mha.env.example`、`nginx.conf.example`，含 SSE `proxy_buffering off`、登录 `limit_req`、`/files` 加固） |
+| CORS | ⬜ 仍未配置，且**同域部署不需要**（前端 `baseURL` 是 `/api`、`fileBaseUrl` 是空串）；只有前后端分域部署时才要补 |
 | 前端表单校验 | `ArticleDialog.vue` 的 `handleSubmit` 原先校验不通过也照发请求（已修成 `if (!valid) return`）；其余页面仍是「后端校验 + 拦截器弹 `msg`」 |
 
 ---
@@ -866,6 +877,7 @@ consultationSessionService.getSessionByIdAndUserId(sessionId, userId)
 | 2026-10-15 | **缺陷审计后的第一批修复：提权 + 上传上限 + 异常兜底 + 阅读量自增 + 库结构入库**。① **注册提权**——改动前实测 `POST /api/user/register` 带 `"userType":2` 会真的建出管理员（响应 `"userType":2,"userTypeDisplayName":"管理员"`，该账号可调 `GET /api/data-analytics/overview`）；修复：`DTO/command/UserRegisterCommandDTO.java` 删掉 `userType` 字段、`service/convert/UserConvert.java` 固定 `.userType(UserType.USER.getCode())`，实测响应恒为 `userType=1`、该账号调管理接口得 `无权访问，该接口仅管理员可用`。② **上传上限 1MB → 5MB + 异常兜底**——`application.yaml` 增加 `spring.servlet.multipart.max-file-size: 5MB` / `max-request-size: 10MB`；`common/GlobalExceptionHandler.java` 新增 `MaxUploadSizeExceededException`（→ `{"code":"5004","msg":"上传的文件过大，单个文件不能超过 5MB"}`，HTTP 200）与 `Exception` 兜底（→ `{"code":"500","msg":"服务器开小差了，请稍后再试"}` + `log.error`）。实测：2MB 上传由「HTTP 413 + 空响应体」变为 `code=200`；6MB 上传返回统一体 `5004` 且库里不留 `sys_file_info` 记录。③ **`read_count` 自增**（规则见 2.3）：实测普通用户读 → 15→16 且响应 `readCount=16`，管理员读 → 保持 16。④ **`db/schema.sql` 纳入仓库**（见第四节）。⑤ 顺带修掉三处隐患：`UserService.register` 里把**含明文密码**的注册体打到控制台的 `System.out.println(JSONUtil.parseObj(commandDTO))`、`login` 的 `WHERE username=? OR password=?` 误写（改为只按 `username` 查，与 `UserDetailsService` 一致）、`frontend/src/views/register.vue` 不再提交 `userType`。`mvn -B -q compile` 通过；6 组端到端实测通过（提权被拦、2MB 通过、6MB 统一报错、阅读量计数、登录的 正确/密码错/用户不存在 三种情形、清理后库回到 5 用户 / 10 文件 / 8 文章）。 |
 | 2026-10-15 | **修复「后台咨询记录点详情报无权访问」**：`GET /api/psychological-chat/sessions/{sessionId}/messages` 原本无条件走归属校验（会话 `user_id` 必须等于登录用户），而后台「咨询记录 → 详情」调的就是这个接口 → 管理员点开用户会话得到 `会话不存在或无权访问`。新增 `PsychologicalChat.requireVisibleSessionId`（管理员只校验会话存在，不存在时返回 `会话不存在`；普通用户仍走原归属校验，且「不存在」与「非本人」返回同一句提示，不泄露存在性）与 `ConsultationSessionService.getSessionById`（不校验归属，仅供已判权限的调用方使用，见第三节）。删除会话与情绪分析**仍严格校验归属**。实测：管理员读他人会话 17（`user_id=2`）→ `code=200` + 消息数组；tester 读同一会话 → `会话不存在或无权访问`；管理员读 `999999` → `会话不存在`；tester 读自己的 35 → `code=200`（回归）；管理员传前缀格式 `session_17` → `code=200`；无 token → `A0301`；管理员删除他人会话仍被拒。 |
 | 2026-10-15 | **新增「用户管理」：管理员可查看用户列表并禁用/启用账号**。后端 `controller/User.java` 新增 `GET /api/user/admin/page`（`keyword` 模糊匹配用户名/昵称/邮箱，`status`/`userType` 筛选 + 分页，参数同时兼容 `currentPage/size` 与 `pageNum/pageSize`）与 `PUT /api/user/admin/{id}/status`（请求体 `{"status":0\|1}`），两者都先过 `SecurityUserUtil.requireAdmin()`；`service/UserService.java` 新增 `pageUsers(...)`（返回体复用 `UserDetailResponseDTO`，**不含密码字段**，按 id 倒序）与 `updateStatus(...)`（用 `UserStatus.fromCode` 校验取值、**禁止管理员修改自己的状态**）；新增 `DTO/command/UserStatusUpdateCommandDTO.java`。前端新增 `views/users.vue`（筛选栏 + 表格 + 分页 + 禁用/启用二次确认；当前账号的「禁用」按钮置灰）与路由 `/back/users`（侧栏菜单由路由表自动生成，无需改 `Sidebar.vue`），`api/admin.js` 增 `getUserPage` / `updateUserStatus`。**「禁用立即生效」没有新增逻辑**，靠已有两处：`UserService.login` 的 `isActive()` 判断（`{"code":"BUSINESS_ERROR","msg":"用户被禁用，请联系管理员"}`）与 `JwtAuthenticationFilter` 每请求校验 `status == 1`（旧 token → `{"code":"A0231","msg":"token已被禁止访问"}`）。14 组端到端实测全过：列表（`total=5`、首行 16 个字段、无 `password`）、关键字/状态/类型三种筛选、普通用户调用被拒（`无权访问，该接口仅管理员可用`）、注册探针账号 → 管理员禁用（库中 `status=0`）→ 探针**旧 token 立即失效**且重新登录被拦 → 启用后恢复正常登录、改自己状态被拒（`不能修改自己的账号状态`）、非法状态（`不支持的用户状态：5`）、`status` 缺失（`{"code":"400","msg":"状态不能为空"}`）、不存在的用户（`用户不存在`）、tester 越权改 admin 状态被拒；清理后库回到 5 个用户、`total=5`。 |
+| 2026-10-15 | **安全三项修复：密钥/口令出库 + 登录限流 + 上传白名单**。① **凭据不再入库**：`application.yaml` 的 `spring.datasource.password` 与 `jwt.secret` 改为 `${DB_PASSWORD:}` / `${JWT_SECRET:}` 占位符（`url`/`username` 也支持 `DB_HOST`/`DB_PORT`/`DB_USERNAME` 覆盖），真实值放 gitignored 的 `application-local.yaml`，生产走环境变量（优先级：环境变量 > `application-local.yaml` > `application.yaml`）；新增 `config/JwtConfig.java` 的 `@PostConstruct` 校验 —— secret 为空或 < 32 位直接**启动失败**（实测 `JWT_SECRET=tooshort` 稳定复现 `IllegalStateException: jwt.secret 未配置或长度不足 32 位`）。改动前实测：用旧 secret（已随 git 历史泄露）手搓 HS256 token 调 `GET /api/data-analytics/overview` 返回 `code=200` 真实数据。② **登录失败限流**：新增 `service/LoginAttemptLimiter.java`，同一「用户名 + 客户端 IP」连错 5 次锁 15 分钟（键里的 IP 只取 `remoteAddr`、**故意不信 `X-Forwarded-For`**），登录成功清零、「用户被禁用」不计失败；按 IP 的 `limit_req_zone` 模板见 `deploy/nginx.conf.example`。③ **上传扩展名白名单**：`FileStorageService` 只收 `jpg/jpeg/png/gif/bmp/webp` + `mp4/webm`，`.html`/`.svg`/无扩展名一律 `6000`（实测改动前上传 `.html` 可被**匿名** GET 成 `Content-Type: text/html` 直出 `<script>`，同源脚本能读走 `localStorage` 里的 JWT）；前端 `AvatarUploader.vue`/`ArticleDialog.vue` 的 `accept` 与提示同步。④ **顺带修掉两处 HTTP 500**：`util/JwtAuthenticationFilter.java` 原来把 `validateToken` 与 `getUserById` 放在 `try/catch` 之外 → 验签失败（含 secret 轮换后的**全部**旧 token）或「token 合法但用户已被删除」都会冒成 **HTTP 500 + Spring 默认错误体**；现在「验签 → 查用户 → 写认证」整段包在同一个 `try/catch` 里，异常统一回落 `A0230`（HTTP 401），并删掉每请求 `System.out.println(requestURL/method)` 的日志噪声。实测 7 种 token 情形（旧 secret / 乱码 / 已过期 / issuer 不符 / 用户已删除 / 无 token / 新 secret 正常签发）全部返回预期状态码。⑤ 新增 `deploy/`（`mha.service`、`mha.env.example`、`nginx.conf.example`）与 `docs/deploy.md`（部署规格、systemd、Nginx 与 SSE、HTTPS、安全清单、备份、自检）。 |
 
 > 本批共 28 项接口级实测（含管理员/普通用户权限、参数校验、只读字段不被旧值回退、同日重复提交覆盖更新、以及读接口回归）全部通过；测试用过的临时文章与日记已删除，库回到 7 篇文章 / 17 条日记。
 

@@ -33,28 +33,40 @@ public class UserService {
     @Resource
     private FileStorageService fileStorageService;
 
+    @Resource
+    private LoginAttemptLimiter loginAttemptLimiter;
+
     public UserLoginResponseDTO login(UserLoginCommandDTO commandDTO)
     {
+        String username = commandDTO.getUsername() == null ? "" : commandDTO.getUsername().trim();
+        // 先看是否已被锁定（连续失败过多），锁定期间不再比对密码
+        loginAttemptLimiter.checkAllowed(username);
+
         LambdaQueryWrapper<User> queryWrapper = new LambdaQueryWrapper<>();
         // 只按用户名定位账号；密码交给下面的 BCrypt 比对（原先还 OR 了一次 password，属误写）
-        queryWrapper.eq(User::getUsername, commandDTO.getUsername());
+        queryWrapper.eq(User::getUsername, username);
 
         User user=userMapper.selectOne(queryWrapper);
         if(user==null)
         {
+            loginAttemptLimiter.recordFailure(username);
             throw new BusinessException("用户不存在");
         }
 
         String inputPassword=commandDTO.getPassword();
         if(!passwordEncoder.matches(inputPassword,user.getPassword()))
         {
+            loginAttemptLimiter.recordFailure(username);
             throw new BusinessException("密码错误");
         }
 
+        // 账号被管理员禁用：不计数（这不是攻击，是管理员的操作结果）
         if(!user.isActive())
         {
             throw new BusinessException("用户被禁用，请联系管理员");
         }
+        // 登录成功，清空该账号的失败计数
+        loginAttemptLimiter.reset(username);
         String token= JwtTokenUtil.generateToken(user.getId(),user.getUsername(), user.getUserType());
         UserLoginResponseDTO.UserDetailResponseDTO userDetailResponseDTO = UserConvert.entityToDetaiResponse(user);
         return UserConvert.entityToResponseDTO(token,userDetailResponseDTO);
@@ -125,7 +137,7 @@ public class UserService {
         // 头像只能是图片，否则删掉刚写入的文件并报错
         if (!FileStorageService.FILE_TYPE_IMAGE.equals(stored.getFileType())) {
             fileStorageService.deleteStoredFile(stored.getFilePath());
-            throw new BusinessException("头像只能是图片文件（jpg / png / gif / webp / svg）");
+            throw new BusinessException("头像只能是图片文件（jpg / jpeg / png / gif / bmp / webp）");
         }
 
         String oldAvatar = user.getAvatar();

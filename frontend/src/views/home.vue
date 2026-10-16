@@ -104,15 +104,15 @@ onMounted(() => {
 .hero-inner {
     max-width: var(--mh-content-max);
     margin: 0 auto;
-    padding: 72px var(--mh-space-5);
+    padding: 76px var(--mh-space-5);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--mh-space-10);
+    justify-content: center;
 }
 
 .hero-text {
-    max-width: 560px;
+    max-width: 680px;
+    text-align: center;
 }
 
 .hero-badge {
@@ -143,6 +143,7 @@ onMounted(() => {
 .hero-actions {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--mh-space-3);
     margin-top: var(--mh-space-6);
 

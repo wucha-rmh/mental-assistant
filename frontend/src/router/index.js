@@ -125,27 +125,35 @@ const router = createRouter({
 // 路由前置守卫
 router.beforeEach((to, from, next) => {
     const token = localStorage.getItem('token')
-    // 当前用户是否登录
-    if (token) {
-        const userInfo = JSON.parse(localStorage.getItem('userInfo'))
-        // 如果是后台用户
-        if (userInfo.userType == 2) {
-            if (to.path.startsWith('/back')) {
-                next()
-            } else {
-                next('/back/dashboard')
-            }
-        } else if (userInfo.userType == 1){
-            // 用户端账号只能访问前台路由
-            if (to.path.startsWith('/back') || to.path.startsWith('/auth')) {
-                next('/')
-            } else {
-                next()
-            }
+    // userInfo 可能缺失或被写坏（例如只清了一半登录态）。解析失败一律按「未登录」处理：
+    // 老写法直接 JSON.parse + userInfo.userType，一旦抛错就走到没有 next() 的分支，
+    // 整次导航会被静默吞掉 —— 表现就是「点按钮没反应、地址栏也不变」。
+    let userInfo = null
+    try {
+        const parsed = JSON.parse(localStorage.getItem('userInfo') || 'null')
+        userInfo = parsed && typeof parsed === 'object' ? parsed : null
+    } catch (e) {
+        userInfo = null
+    }
+    const userType = token && userInfo ? Number(userInfo.userType) : NaN
+
+    if (userType === 2) {
+        // 管理员只能进后台
+        if (to.path.startsWith('/back')) {
+            next()
+        } else {
+            next('/back/dashboard')
+        }
+    } else if (userType === 1) {
+        // 用户端账号只能访问前台路由
+        if (to.path.startsWith('/back') || to.path.startsWith('/auth')) {
+            next('/')
+        } else {
+            next()
         }
     } else {
+        // 未登录 / 登录信息不完整：后台引导去登录页，其余照常放行
         if (to.path.startsWith('/back')) {
-            // 如果是访问后台页面，那么跳转岛登录页
             next('/auth/login')
         } else {
             next()

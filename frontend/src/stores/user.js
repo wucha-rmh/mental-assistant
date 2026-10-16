@@ -38,9 +38,10 @@ export const useUserStore = defineStore('user', () => {
         setInfo({ ...info.value, avatar: path || null })
     }
 
-    /** 退出登录时清空 */
+    /** 退出登录时清空（token 一起清，避免留下「有 token 没用户信息」的半个登录态） */
     const clear = () => {
         info.value = {}
+        localStorage.removeItem('token')
         localStorage.removeItem('userInfo')
     }
 

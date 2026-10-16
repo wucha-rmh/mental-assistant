@@ -57,9 +57,23 @@
                                 :disabled-date="disableFutureDate"
                             />
                         </el-form-item>
-                        <el-form-item label="邮箱 / 手机号">
-                            <div class="readonly-line">
-                                {{ userStore.info.email || '未填写' }} / {{ userStore.info.phone || '未填写' }}
+                        <el-form-item label="邮箱">
+                            <div class="readonly-field">
+                                <span :class="{ 'is-empty': !userStore.info.email }">
+                                    {{ userStore.info.email || '未填写' }}
+                                </span>
+                            </div>
+                        </el-form-item>
+                        <el-form-item label="手机号">
+                            <div class="readonly-field">
+                                <span :class="{ 'is-empty': !userStore.info.phone }">
+                                    {{ userStore.info.phone || '未填写' }}
+                                </span>
+                            </div>
+                        </el-form-item>
+                        <el-form-item>
+                            <div class="readonly-hint">
+                                邮箱与手机号用于登录和找回密码，不在这里修改；如需变更请在下方给管理员留言。
                             </div>
                         </el-form-item>
                         <el-form-item>
@@ -463,8 +477,28 @@ onMounted(() => {
     color: var(--mh-text-3);
 }
 
-.readonly-line {
+/* 只读信息（邮箱/手机号）：做成和输入框同宽同高的浅底块，左对齐不再串行 */
+.readonly-field {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 var(--mh-space-3);
+    background: var(--mh-bg);
+    border-radius: var(--mh-radius-sm);
+    color: var(--mh-text-2);
+    word-break: break-all;
+
+    .is-empty {
+        color: var(--mh-text-3);
+    }
+}
+
+.readonly-hint {
+    margin-left: 90px;
+    font-size: var(--mh-font-1);
     color: var(--mh-text-3);
+    line-height: 1.6;
 }
 
 .password-tip {

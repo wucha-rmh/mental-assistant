@@ -7,6 +7,14 @@
         destroy-on-close
         @close="handleClose"
     >
+        <el-alert
+            v-if="!isEdit"
+            class="draft-tip"
+            type="info"
+            :closable="false"
+            show-icon
+            title="新建的文章先存为草稿，需在列表里点「发布」后，前台才会展示"
+        />
         <el-form :model="formData" :rules="rules" ref="formRef" label-width="120px">
             <el-form-item label="文章标题" prop="title">
                 <el-input v-model="formData.title" placeholder="请输入文章标题" maxlength="200" show-word-limit clearable />
@@ -62,7 +70,7 @@
         <template #footer>
             <el-button @click="btnPreview = !btnPreview">{{ btnPreview ? '隐藏预览' : '预览效果' }}</el-button>
             <el-button @click="handleClose">取消</el-button>
-            <el-button type="primary" @click="handleSubmit" :loading="loading">{{ isEdit ? '更新文章' : '创建文章' }}</el-button>
+            <el-button type="primary" @click="handleSubmit" :loading="loading">{{ isEdit ? '更新文章' : '保存为草稿' }}</el-button>
         </template>
     </el-dialog>
 </template>
@@ -253,6 +261,9 @@ const handleSubmit = () => {
 }
 </script>
 <style lang="scss" scoped>
+.draft-tip {
+    margin-bottom: var(--mh-space-4);
+}
 .cover-placeholder {
     width: 200px;
     height: 120px;

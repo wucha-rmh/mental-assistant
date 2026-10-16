@@ -32,8 +32,6 @@ server:
 # JWT配置
 jwt:
   # ⚠️ 不再写明文：本机放 application-local.yaml，生产用环境变量 JWT_SECRET（建议 48 位以上随机串）
-  # 旧值 MySecretKeyForJWT2025... 已随 git 历史泄露（等同公开）——拿到它就能伪造任意用户（含管理员）的 token，
-  # 所以永远不要再启用；留空或过短会启动失败，见 JwtConfig#validateSecret
   secret: ${JWT_SECRET:}
   expiration: 86400000  # 24小时（毫秒）
   refresh-expiration: 604800000  # 7天（毫秒）

@@ -44,6 +44,9 @@ public class KnowledgeService {
     /** 已发布状态（前端列表里 status=1 的行显示「下线」按钮） */
     private static final int STATUS_PUBLISHED = 1;
 
+    /** 草稿状态：新增的文章一律先落草稿，需管理员在列表里点「发布」才对外可见 */
+    private static final int STATUS_DRAFT = 0;
+
     private final KnowledgeCategoryMapper knowledgeCategoryMapper;
     private final KnowledgeArticleMapper knowledgeArticleMapper;
     private final UserMapper userMapper;
@@ -76,7 +79,7 @@ public class KnowledgeService {
      * @param title              标题模糊筛选，空串表示不过滤
      * @param categoryId         分类筛选，空串表示不过滤
      * @param status             状态筛选，空串表示不过滤
-     * @param sortField          排序字段白名单：publishedAt（默认）/ readCount
+     * @param sortField          排序字段白名单：publishedAt（默认，后台未显式指定时按 updatedAt 倒序）/ readCount
      * @param sortDirection      asc / desc（默认 desc）
      */
     public Page<KnowledgeArticleDTO> pageArticles(int page, int size,
@@ -103,6 +106,11 @@ public class KnowledgeService {
         boolean asc = "asc".equalsIgnoreCase(sortDirection);
         if ("readCount".equalsIgnoreCase(sortField)) {
             wrapper.orderBy(true, asc, KnowledgeArticle::getReadCount);
+        } else if (!StringUtils.hasText(sortField) && includeUnpublished) {
+            // 后台列表默认按「最后修改时间」倒序：草稿的 published_at 为 null，
+            // 若沿用发布时间排序会整列沉到最后一页，新建/编辑完看不到自己的文章
+            wrapper.orderByDesc(KnowledgeArticle::getUpdatedAt)
+                    .orderByDesc(KnowledgeArticle::getId);
         } else {
             wrapper.orderBy(true, asc, KnowledgeArticle::getPublishedAt)
                     .orderByDesc(KnowledgeArticle::getId);
@@ -156,7 +164,8 @@ public class KnowledgeService {
      *
      * <p>前端上传封面时已经用 {@code crypto.randomUUID()} 生成过 id 并写进
      * {@code sys_file_info.business_id}，这里优先沿用，避免封面与文章对不上号。
-     * 前端不提交 status：新增一律按「已发布」入库并盖上发布时间。
+     * 前端不提交 status：新增一律落「草稿」({@link #STATUS_DRAFT})、{@code published_at} 留空，
+     * 管理员在列表里点「发布」（{@code PUT /api/knowledge/article/{id}/status}）时才盖上发布时间。
      *
      * @param authorId 当前登录管理员ID
      */
@@ -178,8 +187,8 @@ public class KnowledgeService {
                 .tags(trimToNull(command.getTags()))
                 .authorId(authorId)
                 .readCount(0)
-                .status(STATUS_PUBLISHED)
-                .publishedAt(now)
+                .status(STATUS_DRAFT)
+                .publishedAt(null)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();

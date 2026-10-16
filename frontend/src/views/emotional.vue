@@ -21,14 +21,16 @@
                 <el-table-column prop="diaryDate" label="记录日期" width="130" />
                 <el-table-column label="情绪评分" width="220">
                     <template #default="scope">
-                        <el-rate :model-value="scope.row.moodScore" :max="10" disabled />
+                        <el-rate class="mood-rate" :model-value="scope.row.moodScore" :max="10" disabled />
                     </template>
                 </el-table-column>
                 <el-table-column prop="diaryContent" label="今日感想" min-width="260" show-overflow-tooltip />
                 <el-table-column label="操作" width="140" fixed="right">
                     <template #default="scope">
-                        <el-button @click="viewSessionDetail(scope.row)" text type="primary">详情</el-button>
-                        <el-button @click="handleDelete(scope.row)" text type="danger">删除</el-button>
+                        <div class="table-actions">
+                            <el-button @click="viewSessionDetail(scope.row)" text type="primary">详情</el-button>
+                            <el-button @click="handleDelete(scope.row)" text type="danger">删除</el-button>
+                        </div>
                     </template>
                 </el-table-column>
             </el-table>
@@ -197,6 +199,12 @@ onMounted(() => {
     .user-name {
         color: var(--mh-text-1);
     }
+}
+
+/* 情绪评分：10 颗星按默认尺寸（18px 图标 + 6px 间距）要 240px，会溢出 220px 的列宽 */
+.mood-rate {
+    --el-rate-icon-size: 15px;
+    --el-rate-icon-margin: 3px;
 }
 
 .detail-content {

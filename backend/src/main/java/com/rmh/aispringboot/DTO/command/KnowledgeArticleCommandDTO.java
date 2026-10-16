@@ -11,8 +11,8 @@ import lombok.Data;
  * 前端上传封面时会用 {@code crypto.randomUUID()} 生成 {@code id} 并作为
  * {@code sys_file_info.business_id}，所以新增时可以带上 {@code id}（不带则由后端生成）。
  *
- * <p>前端不提交 {@code status}：新增一律按「已发布」处理，上下架走
- * {@code PUT /api/knowledge/article/{id}/status}。
+ * <p>前端不提交 {@code status}：新增一律落「草稿」（{@code status=0}、{@code published_at} 为空），
+ * 需要管理员在列表里点「发布」，上下架走 {@code PUT /api/knowledge/article/{id}/status}。
  */
 @Data
 public class KnowledgeArticleCommandDTO {

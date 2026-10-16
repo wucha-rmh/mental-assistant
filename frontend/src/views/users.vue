@@ -76,18 +76,20 @@
                 <el-table-column prop="createdAt" label="注册时间" width="170" />
                 <el-table-column label="操作" width="110" fixed="right">
                     <template #default="scope">
-                        <el-button
-                            v-if="scope.row.status === 1"
-                            type="danger"
-                            text
-                            :disabled="scope.row.id === currentUserId"
-                            @click="changeStatus(scope.row, 0)"
-                        >
-                            禁用
-                        </el-button>
-                        <el-button v-else type="success" text @click="changeStatus(scope.row, 1)">
-                            启用
-                        </el-button>
+                        <div class="table-actions">
+                            <el-button
+                                v-if="scope.row.status === 1"
+                                type="danger"
+                                text
+                                :disabled="scope.row.id === currentUserId"
+                                @click="changeStatus(scope.row, 0)"
+                            >
+                                禁用
+                            </el-button>
+                            <el-button v-else type="success" text @click="changeStatus(scope.row, 1)">
+                                启用
+                            </el-button>
+                        </div>
                     </template>
                 </el-table-column>
             </el-table>

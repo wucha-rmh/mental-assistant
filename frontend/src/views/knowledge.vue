@@ -32,22 +32,24 @@
                     </template>
                 </el-table-column>
                 <el-table-column prop="updatedAt" label="更新时间" width="180" />
-                <el-table-column label="操作" width="200" fixed="right">
+                <el-table-column label="操作" width="220" fixed="right">
                     <template #default="scope">
-                        <el-button @click="handleEdit(scope.row)" text type="primary">编辑</el-button>
-                        <el-button
-                            v-if="scope.row.status === 0 || scope.row.status === 2"
-                            @click="handlePublish(scope.row)"
-                            text
-                            type="success"
-                        >发布</el-button>
-                        <el-button
-                            v-if="scope.row.status === 1"
-                            @click="handleUnpublish(scope.row)"
-                            text
-                            type="warning"
-                        >下线</el-button>
-                        <el-button @click="handleDelete(scope.row)" text type="danger">删除</el-button>
+                        <div class="table-actions">
+                            <el-button @click="handleEdit(scope.row)" text type="primary">编辑</el-button>
+                            <el-button
+                                v-if="scope.row.status === 0 || scope.row.status === 2"
+                                @click="handlePublish(scope.row)"
+                                text
+                                type="success"
+                            >发布</el-button>
+                            <el-button
+                                v-if="scope.row.status === 1"
+                                @click="handleUnpublish(scope.row)"
+                                text
+                                type="warning"
+                            >下线</el-button>
+                            <el-button @click="handleDelete(scope.row)" text type="danger">删除</el-button>
+                        </div>
                     </template>
                 </el-table-column>
             </el-table>
@@ -72,7 +74,9 @@ import { categoryTree, articlePage, getArticleDetail, changeArticleStatus, delet
 import ArticleDialog from '@/components/ArticleDialog.vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 
-const formItem = [
+// 必须用 reactive：分类选项是 onMounted 里异步取回来再赋给 formItem[1].options 的，
+// 普通数组不是响应式的，TableSearch 的 computed 不会重算 → 下拉框里只剩它自带的「全部」
+const formItem = reactive([
     { comp: 'input', prop: 'title', label: '文章标题', placeholder: '请输入文章标题' },
     { comp: 'select', prop: 'categoryId', label: '分类', placeholder: '请选择分类' },
     { comp: 'select', prop: 'status', label: '状态', placeholder: '请选择状态', options: [
@@ -80,7 +84,7 @@ const formItem = [
         { label: '已发布', value: '1' },
         { label: '已下线', value: '2' }
     ] }
-]
+])
 
 // 分页参数（后端兼容 currentPage/size 与 pageNum/pageSize）
 const pagination = reactive({

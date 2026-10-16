@@ -163,6 +163,26 @@ a {
   padding: 10px 0;
 }
 
+/* 表格「操作」列：Element Plus 给 text 按钮的默认内边距是 8px 15px、相邻按钮还有 12px 外边距，
+   两个以上按钮就会超出列宽被挤成两行（知识文章 4 个按钮尤其明显）。
+   统一用 flex 排成一行、间距相等；列宽见各页 el-table-column 的 width */
+.table-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: var(--mh-space-1);
+
+  .el-button + .el-button {
+    margin-left: 0;
+  }
+
+  /* 收紧 text 按钮的内边距，让 4 个按钮也能排在一行里 */
+  .el-button.is-text {
+    padding: 4px 7px;
+  }
+}
+
 /* 分页：统一靠右、留白一致（替代历史上各页手写的 margin-top:25px） */
 .pagination-info {
   display: flex;

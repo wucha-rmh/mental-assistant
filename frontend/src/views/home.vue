@@ -23,28 +23,6 @@
                     </div>
                     <p v-if="!isLoggedIn" class="hero-hint">首次使用需要先登录 / 注册，几秒钟就好</p>
                 </div>
-                <!-- 可滚动的球体：按住左右拖动即滚动，松手带一点惯性 -->
-                <div class="hero-art">
-                    <div
-                        class="roll-ball"
-                        :class="{ 'is-dragging': dragging }"
-                        role="img"
-                        aria-label="可滚动的球体，按住左右拖动"
-                        tabindex="0"
-                        @pointerdown="onPointerDown"
-                        @pointermove="onPointerMove"
-                        @pointerup="onPointerUp"
-                        @pointercancel="endDrag"
-                        @keydown.left.prevent="spin(-28)"
-                        @keydown.right.prevent="spin(28)"
-                    >
-                        <span class="ball-sphere">
-                            <span class="sphere-texture" :style="{ transform: `rotate(${roll}deg)` }"></span>
-                            <span class="sphere-shade"></span>
-                            <span class="sphere-sheen"></span>
-                        </span>
-                    </div>
-                </div>
             </div>
         </section>
 
@@ -67,75 +45,12 @@
     </div>
 </template>
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
 const isLoggedIn = ref(false)
-
-/* ── 可滚动的球体：按住左右拖动即滚动，松手带一点惯性 ── */
-const reducedMotion = ref(false)
-const roll = ref(0)
-const dragging = ref(false)
-let pointerId = null
-let lastX = 0
-let velocity = 0
-let inertiaId = null
-
-const stopInertia = () => {
-    if (inertiaId) {
-        cancelAnimationFrame(inertiaId)
-        inertiaId = null
-    }
-}
-
-const glide = () => {
-    velocity *= 0.94
-    if (Math.abs(velocity) < 0.06) {
-        inertiaId = null
-        return
-    }
-    roll.value += velocity
-    inertiaId = requestAnimationFrame(glide)
-}
-
-const onPointerDown = (event) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
-    pointerId = event.pointerId
-    dragging.value = true
-    lastX = event.clientX
-    velocity = 0
-    stopInertia()
-    event.currentTarget.setPointerCapture?.(pointerId)
-}
-
-const onPointerMove = (event) => {
-    if (!dragging.value || event.pointerId !== pointerId) return
-    const delta = event.clientX - lastX
-    lastX = event.clientX
-    roll.value += delta * 0.6
-    velocity = delta * 0.6
-}
-
-const endDrag = () => {
-    if (!dragging.value) return
-    dragging.value = false
-    pointerId = null
-    if (!reducedMotion.value) glide()
-}
-
-const onPointerUp = () => endDrag()
-
-// 键盘也能转：左右方向键各推一把
-const spin = (deg) => {
-    stopInertia()
-    roll.value += deg
-    if (!reducedMotion.value) {
-        velocity = deg * 0.4
-        glide()
-    }
-}
 
 // 需要登录的入口在未登录时先引导到登录页，避免点进去一路报错
 const needLogin = ['/consultation', '/emotion-diary']
@@ -173,11 +88,6 @@ const go = (path) => {
 
 onMounted(() => {
     isLoggedIn.value = localStorage.getItem('token') !== null
-    reducedMotion.value = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-})
-
-onBeforeUnmount(() => {
-    stopInertia()
 })
 </script>
 <style scoped lang="scss">
@@ -249,105 +159,6 @@ onBeforeUnmount(() => {
     margin-top: var(--mh-space-3);
     font-size: var(--mh-font-2);
     color: var(--mh-text-3);
-}
-
-/* ── 可滚动的球体（按住左右拖动即滚动） ── */
-.hero-art {
-    width: 268px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.roll-ball {
-    position: relative;
-    width: 244px;
-    height: 244px;
-    border-radius: 50%;
-    cursor: grab;
-    touch-action: pan-y;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-
-    &:focus-visible {
-        outline: 2px solid var(--mh-primary);
-        outline-offset: 6px;
-    }
-
-    /* ── 3D 球体：内层纹理负责「滚」，外层负责体积感 ── */
-    .ball-sphere {
-        position: absolute;
-        inset: 0;
-        border-radius: 50%;
-        overflow: hidden;
-        background: radial-gradient(circle at 50% 45%, #f3f8fa 0%, #d7e5ec 100%);
-        /* 落地投影：让球「坐」在页面上而不是贴在上面 */
-        box-shadow: 0 18px 30px -14px rgba(47, 62, 70, 0.45);
-        pointer-events: none;
-    }
-
-    .sphere-texture {
-        position: absolute;
-        inset: -30%;
-        border-radius: 50%;
-        /* 经线 + 色块：旋转时能明确看出「球在滚」 */
-        background:
-            repeating-linear-gradient(
-                90deg,
-                rgba(78, 128, 152, 0.3) 0 1.5px,
-                rgba(78, 128, 152, 0) 1.5px 24px
-            ),
-            conic-gradient(
-                from 0deg,
-                rgba(78, 128, 152, 0.5) 0deg,
-                rgba(127, 182, 158, 0.45) 62deg,
-                rgba(255, 255, 255, 0.85) 122deg,
-                rgba(78, 128, 152, 0.5) 182deg,
-                rgba(127, 182, 158, 0.45) 242deg,
-                rgba(255, 255, 255, 0.85) 302deg,
-                rgba(78, 128, 152, 0.5) 360deg
-            );
-        filter: blur(3px);
-        /* 越靠边越淡，模拟球面把纹理带走 */
-        mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 1) 52%, rgba(0, 0, 0, 0.2) 100%);
-        -webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 1) 52%, rgba(0, 0, 0, 0.2) 100%);
-        will-change: transform;
-    }
-
-    .sphere-shade,
-    .sphere-sheen {
-        position: absolute;
-        inset: 0;
-        border-radius: 50%;
-        pointer-events: none;
-    }
-
-    /* 左上受光、右下环境反光、边缘压暗 —— 球体体积感主要来自这一层 */
-    .sphere-shade {
-        background:
-            radial-gradient(
-                circle at 33% 26%,
-                rgba(255, 255, 255, 0.82) 0%,
-                rgba(255, 255, 255, 0.12) 22%,
-                rgba(255, 255, 255, 0) 42%
-            ),
-            radial-gradient(circle at 72% 78%, rgba(214, 234, 225, 0.7) 0%, rgba(255, 255, 255, 0) 46%),
-            radial-gradient(circle at 64% 70%, rgba(255, 255, 255, 0) 40%, rgba(78, 128, 152, 0.42) 100%);
-        box-shadow: inset -16px -18px 30px rgba(78, 128, 152, 0.34), inset 6px 8px 18px rgba(255, 255, 255, 0.38),
-            inset 0 0 0 1px rgba(255, 255, 255, 0.45);
-    }
-
-    /* 镜面高光：不随纹理转动，固定在天光方向 */
-    .sphere-sheen {
-        background:
-            radial-gradient(ellipse 22% 15% at 29% 22%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 70%),
-            radial-gradient(circle at 30% 23%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 13%);
-    }
-
-    &.is-dragging {
-        cursor: grabbing;
-    }
 }
 
 /* ── 三个功能入口 ── */

@@ -23,44 +23,27 @@
                     </div>
                     <p v-if="!isLoggedIn" class="hero-hint">首次使用需要先登录 / 注册，几秒钟就好</p>
                 </div>
-                <!-- 呼吸球：点击开始 / 结束引导式呼吸练习 -->
+                <!-- 可滚动的球体：按住左右拖动即滚动，松手带一点惯性 -->
                 <div class="hero-art">
-                    <button
-                        type="button"
-                        class="breath-ball"
-                        :class="{ 'is-active': breathing, 'is-dragging': dragging }"
-                        :style="ballStyle"
-                        :aria-pressed="breathing ? 'true' : 'false'"
-                        :aria-label="breathing ? '结束呼吸练习' : '开始呼吸练习'"
-                        @click="onClick"
+                    <div
+                        class="roll-ball"
+                        :class="{ 'is-dragging': dragging }"
+                        role="img"
+                        aria-label="可滚动的球体，按住左右拖动"
+                        tabindex="0"
                         @pointerdown="onPointerDown"
                         @pointermove="onPointerMove"
                         @pointerup="onPointerUp"
                         @pointercancel="endDrag"
+                        @keydown.left.prevent="spin(-28)"
+                        @keydown.right.prevent="spin(28)"
                     >
-                        <span class="ball-halo" aria-hidden="true"></span>
-                        <!-- 3D 球体：内层纹理随拖动旋转，外层负责高光与暗部 -->
-                        <span class="ball-sphere" aria-hidden="true">
+                        <span class="ball-sphere">
                             <span class="sphere-texture" :style="{ transform: `rotate(${roll}deg)` }"></span>
                             <span class="sphere-shade"></span>
                             <span class="sphere-sheen"></span>
                         </span>
-                        <svg class="ball-ring" viewBox="0 0 100 100" aria-hidden="true">
-                            <circle class="ring-track" cx="50" cy="50" r="46" />
-                            <circle class="ring-progress" cx="50" cy="50" r="46" :style="{ strokeDashoffset: ringOffset }" />
-                        </svg>
-                        <span class="ball-core">
-                            <template v-if="breathing">
-                                <span class="ball-phase">{{ phase.text }}</span>
-                                <span class="ball-count">{{ remaining }}</span>
-                            </template>
-                            <span v-else class="ball-label">呼吸练习</span>
-                        </span>
-                    </button>
-                    <p class="ball-hint">
-                        <template v-if="breathing">第 {{ cycles }} 轮 · {{ phase.tip }} · 点击结束</template>
-                        <template v-else>点击开始 {{ totalSeconds }} 秒呼吸练习 · 按住拖动可滚动球体</template>
-                    </p>
+                    </div>
                 </div>
             </div>
         </section>
@@ -91,78 +74,14 @@ const router = useRouter()
 
 const isLoggedIn = ref(false)
 
-/* ── 呼吸球：4-4-6-2 引导呼吸（焦虑时常用来把呼吸放慢的节奏） ── */
-const BREATH_PHASES = [
-    { key: 'inhale', text: '吸气', seconds: 4, scale: 1.16, tip: '用鼻子慢慢吸气' },
-    { key: 'hold', text: '屏息', seconds: 4, scale: 1.16, tip: '轻轻屏住就好' },
-    { key: 'exhale', text: '呼气', seconds: 6, scale: 0.86, tip: '用嘴缓缓呼气' },
-    { key: 'rest', text: '停留', seconds: 2, scale: 0.86, tip: '放松，准备下一轮' }
-]
-const RING_LENGTH = 2 * Math.PI * 46
-
-const breathing = ref(false)
-const phaseIndex = ref(0)
-const remaining = ref(BREATH_PHASES[0].seconds)
-const cycles = ref(0)
+/* ── 可滚动的球体：按住左右拖动即滚动，松手带一点惯性 ── */
 const reducedMotion = ref(false)
-let timer = null
-
-const phase = computed(() => BREATH_PHASES[phaseIndex.value])
-const totalSeconds = computed(() => BREATH_PHASES.reduce((sum, item) => sum + item.seconds, 0))
-
-// 每个阶段用不同的过渡时长，球体大小就与阶段秒数严格同步
-const ballStyle = computed(() => {
-    if (!breathing.value || reducedMotion.value) {
-        return { transform: 'scale(1)', '--ball-duration': '0.8s' }
-    }
-    return { transform: `scale(${phase.value.scale})`, '--ball-duration': `${phase.value.seconds}s` }
-})
-
-// 圆环随当前阶段倒计时逐渐走完
-const ringOffset = computed(() => {
-    if (!breathing.value) return 0
-    return RING_LENGTH * (1 - remaining.value / phase.value.seconds)
-})
-
-const tick = () => {
-    remaining.value -= 1
-    if (remaining.value > 0) return
-    const next = (phaseIndex.value + 1) % BREATH_PHASES.length
-    if (next === 0) cycles.value += 1
-    phaseIndex.value = next
-    remaining.value = BREATH_PHASES[next].seconds
-}
-
-const startBreathing = () => {
-    phaseIndex.value = 0
-    remaining.value = BREATH_PHASES[0].seconds
-    cycles.value = 1
-    breathing.value = true
-    timer = setInterval(tick, 1000)
-}
-
-const stopBreathing = () => {
-    breathing.value = false
-    cycles.value = 0
-    phaseIndex.value = 0
-    remaining.value = BREATH_PHASES[0].seconds
-    if (timer) {
-        clearInterval(timer)
-        timer = null
-    }
-}
-
-const toggleBreathing = () => (breathing.value ? stopBreathing() : startBreathing())
-
-/* ── 球体拖动：按住左右拖动即滚动，松手带一点惯性；没拖动才算点击 ── */
 const roll = ref(0)
 const dragging = ref(false)
 let pointerId = null
-let startX = 0
 let lastX = 0
 let velocity = 0
 let inertiaId = null
-let moved = false
 
 const stopInertia = () => {
     if (inertiaId) {
@@ -185,8 +104,6 @@ const onPointerDown = (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     pointerId = event.pointerId
     dragging.value = true
-    moved = false
-    startX = event.clientX
     lastX = event.clientX
     velocity = 0
     stopInertia()
@@ -197,7 +114,6 @@ const onPointerMove = (event) => {
     if (!dragging.value || event.pointerId !== pointerId) return
     const delta = event.clientX - lastX
     lastX = event.clientX
-    if (Math.abs(event.clientX - startX) > 6) moved = true
     roll.value += delta * 0.6
     velocity = delta * 0.6
 }
@@ -206,18 +122,19 @@ const endDrag = () => {
     if (!dragging.value) return
     dragging.value = false
     pointerId = null
-    if (moved) glide()
+    if (!reducedMotion.value) glide()
 }
 
 const onPointerUp = () => endDrag()
 
-const onClick = () => {
-    // 拖动结束浏览器仍会补一次 click，这里要把它与「真正的点击」区分开
-    if (moved) {
-        moved = false
-        return
+// 键盘也能转：左右方向键各推一把
+const spin = (deg) => {
+    stopInertia()
+    roll.value += deg
+    if (!reducedMotion.value) {
+        velocity = deg * 0.4
+        glide()
     }
-    toggleBreathing()
 }
 
 // 需要登录的入口在未登录时先引导到登录页，避免点进去一路报错
@@ -260,7 +177,6 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-    if (timer) clearInterval(timer)
     stopInertia()
 })
 </script>
@@ -335,105 +251,39 @@ onBeforeUnmount(() => {
     color: var(--mh-text-3);
 }
 
-/* ── 呼吸球（点击开始引导式呼吸练习） ── */
+/* ── 可滚动的球体（按住左右拖动即滚动） ── */
 .hero-art {
     width: 268px;
     flex-shrink: 0;
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--mh-space-4);
-}
-
-.breath-ball {
-    position: relative;
-    width: 228px;
-    height: 228px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    cursor: grab;
-    font-family: inherit;
-    touch-action: pan-y;
-    user-select: none;
-    display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(
-        circle at 32% 26%,
-        rgba(255, 255, 255, 0.96) 0%,
-        rgba(255, 255, 255, 0.78) 46%,
-        var(--mh-primary-light-9) 100%
-    );
-    box-shadow: var(--mh-shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
-    transform: scale(1);
-    /* --ball-duration 由脚本按当前阶段秒数注入，球体缩放与呼吸节拍严格同步 */
-    transition: transform var(--ball-duration, 0.8s) ease-in-out, box-shadow 0.35s ease;
-    -webkit-tap-highlight-color: transparent;
+}
 
-    &:hover,
-    &.is-active {
-        box-shadow: var(--mh-shadow-primary), inset 0 0 0 1px rgba(255, 255, 255, 0.9);
-    }
+.roll-ball {
+    position: relative;
+    width: 244px;
+    height: 244px;
+    border-radius: 50%;
+    cursor: grab;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 
     &:focus-visible {
         outline: 2px solid var(--mh-primary);
         outline-offset: 6px;
     }
 
-    .ball-halo {
-        position: absolute;
-        inset: -16px;
-        border-radius: 50%;
-        background: var(--mh-mint-light-7);
-        opacity: 0;
-        animation: ball-breathe 7s ease-in-out infinite;
-        pointer-events: none;
-    }
-
-    &.is-active .ball-halo {
-        animation: none;
-        opacity: 0.35;
-    }
-
-    .ball-ring {
-        position: absolute;
-        inset: 4px;
-        width: calc(100% - 8px);
-        height: calc(100% - 8px);
-        transform: rotate(-90deg);
-        pointer-events: none;
-
-        .ring-track,
-        .ring-progress {
-            fill: none;
-            stroke-linecap: round;
-        }
-
-        .ring-track {
-            stroke: var(--mh-border-strong);
-            stroke-width: 1.5;
-            opacity: 0.8;
-        }
-
-        .ring-progress {
-            stroke: var(--mh-primary);
-            stroke-width: 3;
-            /* 2π × 46，与脚本里的 RING_LENGTH 一致（r 见模板中的 circle） */
-            stroke-dasharray: 289.03;
-            transition: stroke-dashoffset 1s linear;
-        }
-    }
-
     /* ── 3D 球体：内层纹理负责「滚」，外层负责体积感 ── */
     .ball-sphere {
         position: absolute;
-        inset: 20px;
+        inset: 0;
         border-radius: 50%;
         overflow: hidden;
         background: radial-gradient(circle at 50% 45%, #f3f8fa 0%, #d7e5ec 100%);
         /* 落地投影：让球「坐」在页面上而不是贴在上面 */
-        box-shadow: 0 16px 26px -14px rgba(47, 62, 70, 0.45);
+        box-shadow: 0 18px 30px -14px rgba(47, 62, 70, 0.45);
         pointer-events: none;
     }
 
@@ -495,77 +345,8 @@ onBeforeUnmount(() => {
             radial-gradient(circle at 30% 23%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 13%);
     }
 
-    .ball-core {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: var(--mh-primary-dark-2);
-        pointer-events: none;
-    }
-
-    .ball-label {
-        font-size: var(--mh-font-3);
-        font-weight: 600;
-        letter-spacing: 3px;
-        text-indent: 3px;
-        color: var(--mh-primary-dark-2);
-        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
-    }
-
-    .ball-phase {
-        font-size: var(--mh-font-4);
-        font-weight: 600;
-        letter-spacing: 4px;
-        text-indent: 4px;
-        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
-    }
-
-    .ball-count {
-        font-size: var(--mh-font-7);
-        font-weight: 600;
-        line-height: 1.2;
-        color: var(--mh-text-1);
-        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
-        font-variant-numeric: tabular-nums;
-    }
-
     &.is-dragging {
         cursor: grabbing;
-
-        .sphere-texture {
-            filter: blur(11px);
-        }
-    }
-}
-
-.ball-hint {
-    height: 18px;
-    font-size: var(--mh-font-2);
-    color: var(--mh-text-3);
-    text-align: center;
-}
-
-@keyframes ball-breathe {
-    0%,
-    100% {
-        opacity: 0;
-        transform: scale(0.94);
-    }
-    50% {
-        opacity: 0.5;
-        transform: scale(1.06);
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .breath-ball {
-        transition: box-shadow 0.35s ease;
-    }
-
-    .breath-ball .ball-halo {
-        animation: none;
     }
 }
 

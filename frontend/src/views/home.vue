@@ -28,13 +28,23 @@
                     <button
                         type="button"
                         class="breath-ball"
-                        :class="{ 'is-active': breathing }"
+                        :class="{ 'is-active': breathing, 'is-dragging': dragging }"
                         :style="ballStyle"
                         :aria-pressed="breathing ? 'true' : 'false'"
                         :aria-label="breathing ? '结束呼吸练习' : '开始呼吸练习'"
-                        @click="toggleBreathing"
+                        @click="onClick"
+                        @pointerdown="onPointerDown"
+                        @pointermove="onPointerMove"
+                        @pointerup="onPointerUp"
+                        @pointercancel="endDrag"
                     >
                         <span class="ball-halo" aria-hidden="true"></span>
+                        <!-- 3D 球体：内层纹理随拖动旋转，外层负责高光与暗部 -->
+                        <span class="ball-sphere" aria-hidden="true">
+                            <span class="sphere-texture" :style="{ transform: `rotate(${roll}deg)` }"></span>
+                            <span class="sphere-shade"></span>
+                            <span class="sphere-sheen"></span>
+                        </span>
                         <svg class="ball-ring" viewBox="0 0 100 100" aria-hidden="true">
                             <circle class="ring-track" cx="50" cy="50" r="46" />
                             <circle class="ring-progress" cx="50" cy="50" r="46" :style="{ strokeDashoffset: ringOffset }" />
@@ -44,17 +54,12 @@
                                 <span class="ball-phase">{{ phase.text }}</span>
                                 <span class="ball-count">{{ remaining }}</span>
                             </template>
-                            <template v-else>
-                                <span class="ball-face">
-                                    <img class="ball-image" :src="iconUrl" alt="AI 心理助手" />
-                                </span>
-                                <span class="ball-label">呼吸练习</span>
-                            </template>
+                            <span v-else class="ball-label">呼吸练习</span>
                         </span>
                     </button>
                     <p class="ball-hint">
                         <template v-if="breathing">第 {{ cycles }} 轮 · {{ phase.tip }} · 点击结束</template>
-                        <template v-else>点击圆球，跟随节拍做 {{ totalSeconds }} 秒呼吸练习</template>
+                        <template v-else>点击开始 {{ totalSeconds }} 秒呼吸练习 · 按住拖动可滚动球体</template>
                     </p>
                 </div>
             </div>
@@ -83,8 +88,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-
-const iconUrl = new URL('@/assets/images/robot-fill.png', import.meta.url).href
 
 const isLoggedIn = ref(false)
 
@@ -151,6 +154,72 @@ const stopBreathing = () => {
 
 const toggleBreathing = () => (breathing.value ? stopBreathing() : startBreathing())
 
+/* ── 球体拖动：按住左右拖动即滚动，松手带一点惯性；没拖动才算点击 ── */
+const roll = ref(0)
+const dragging = ref(false)
+let pointerId = null
+let startX = 0
+let lastX = 0
+let velocity = 0
+let inertiaId = null
+let moved = false
+
+const stopInertia = () => {
+    if (inertiaId) {
+        cancelAnimationFrame(inertiaId)
+        inertiaId = null
+    }
+}
+
+const glide = () => {
+    velocity *= 0.94
+    if (Math.abs(velocity) < 0.06) {
+        inertiaId = null
+        return
+    }
+    roll.value += velocity
+    inertiaId = requestAnimationFrame(glide)
+}
+
+const onPointerDown = (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    pointerId = event.pointerId
+    dragging.value = true
+    moved = false
+    startX = event.clientX
+    lastX = event.clientX
+    velocity = 0
+    stopInertia()
+    event.currentTarget.setPointerCapture?.(pointerId)
+}
+
+const onPointerMove = (event) => {
+    if (!dragging.value || event.pointerId !== pointerId) return
+    const delta = event.clientX - lastX
+    lastX = event.clientX
+    if (Math.abs(event.clientX - startX) > 6) moved = true
+    roll.value += delta * 0.6
+    velocity = delta * 0.6
+}
+
+const endDrag = () => {
+    if (!dragging.value) return
+    dragging.value = false
+    pointerId = null
+    if (moved) glide()
+}
+
+const onPointerUp = () => endDrag()
+
+const onClick = () => {
+    // 拖动结束浏览器仍会补一次 click，这里要把它与「真正的点击」区分开
+    if (moved) {
+        moved = false
+        return
+    }
+    toggleBreathing()
+}
+
 // 需要登录的入口在未登录时先引导到登录页，避免点进去一路报错
 const needLogin = ['/consultation', '/emotion-diary']
 const withAuth = (path) => (isLoggedIn.value || !needLogin.includes(path) ? path : '/auth/login')
@@ -192,6 +261,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     if (timer) clearInterval(timer)
+    stopInertia()
 })
 </script>
 <style scoped lang="scss">
@@ -282,8 +352,10 @@ onBeforeUnmount(() => {
     padding: 0;
     border: 0;
     border-radius: 50%;
-    cursor: pointer;
+    cursor: grab;
     font-family: inherit;
+    touch-action: pan-y;
+    user-select: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -326,9 +398,9 @@ onBeforeUnmount(() => {
 
     .ball-ring {
         position: absolute;
-        inset: 9px;
-        width: calc(100% - 18px);
-        height: calc(100% - 18px);
+        inset: 4px;
+        width: calc(100% - 8px);
+        height: calc(100% - 8px);
         transform: rotate(-90deg);
         pointer-events: none;
 
@@ -353,44 +425,93 @@ onBeforeUnmount(() => {
         }
     }
 
+    /* ── 3D 球体：内层纹理负责「滚」，外层负责体积感 ── */
+    .ball-sphere {
+        position: absolute;
+        inset: 20px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: radial-gradient(circle at 50% 45%, #f3f8fa 0%, #d7e5ec 100%);
+        /* 落地投影：让球「坐」在页面上而不是贴在上面 */
+        box-shadow: 0 16px 26px -14px rgba(47, 62, 70, 0.45);
+        pointer-events: none;
+    }
+
+    .sphere-texture {
+        position: absolute;
+        inset: -30%;
+        border-radius: 50%;
+        /* 经线 + 色块：旋转时能明确看出「球在滚」 */
+        background:
+            repeating-linear-gradient(
+                90deg,
+                rgba(78, 128, 152, 0.3) 0 1.5px,
+                rgba(78, 128, 152, 0) 1.5px 24px
+            ),
+            conic-gradient(
+                from 0deg,
+                rgba(78, 128, 152, 0.5) 0deg,
+                rgba(127, 182, 158, 0.45) 62deg,
+                rgba(255, 255, 255, 0.85) 122deg,
+                rgba(78, 128, 152, 0.5) 182deg,
+                rgba(127, 182, 158, 0.45) 242deg,
+                rgba(255, 255, 255, 0.85) 302deg,
+                rgba(78, 128, 152, 0.5) 360deg
+            );
+        filter: blur(3px);
+        /* 越靠边越淡，模拟球面把纹理带走 */
+        mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 1) 52%, rgba(0, 0, 0, 0.2) 100%);
+        -webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 1) 52%, rgba(0, 0, 0, 0.2) 100%);
+        will-change: transform;
+    }
+
+    .sphere-shade,
+    .sphere-sheen {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        pointer-events: none;
+    }
+
+    /* 左上受光、右下环境反光、边缘压暗 —— 球体体积感主要来自这一层 */
+    .sphere-shade {
+        background:
+            radial-gradient(
+                circle at 33% 26%,
+                rgba(255, 255, 255, 0.82) 0%,
+                rgba(255, 255, 255, 0.12) 22%,
+                rgba(255, 255, 255, 0) 42%
+            ),
+            radial-gradient(circle at 72% 78%, rgba(214, 234, 225, 0.7) 0%, rgba(255, 255, 255, 0) 46%),
+            radial-gradient(circle at 64% 70%, rgba(255, 255, 255, 0) 40%, rgba(78, 128, 152, 0.42) 100%);
+        box-shadow: inset -16px -18px 30px rgba(78, 128, 152, 0.34), inset 6px 8px 18px rgba(255, 255, 255, 0.38),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+    }
+
+    /* 镜面高光：不随纹理转动，固定在天光方向 */
+    .sphere-sheen {
+        background:
+            radial-gradient(ellipse 22% 15% at 29% 22%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0) 70%),
+            radial-gradient(circle at 30% 23%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 13%);
+    }
+
     .ball-core {
         position: relative;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: var(--mh-space-3);
-        color: var(--mh-primary);
-    }
-
-    /* iconUrl 是白色剪影 PNG，必须垫一层底色才看得见（见 CLAUDE.md 三.9） */
-    .ball-face {
-        width: 124px;
-        height: 124px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(150deg, var(--mh-primary-light-3) 0%, var(--mh-mint) 100%);
-        box-shadow: var(--mh-shadow-sm);
-        transition: transform 0.35s ease;
-    }
-
-    &:hover .ball-face {
-        transform: scale(1.06);
-    }
-
-    .ball-image {
-        width: 78px;
-        height: 78px;
-        object-fit: contain;
+        color: var(--mh-primary-dark-2);
+        pointer-events: none;
     }
 
     .ball-label {
-        font-size: var(--mh-font-2);
-        letter-spacing: 2px;
-        text-indent: 2px;
-        color: var(--mh-text-3);
+        font-size: var(--mh-font-3);
+        font-weight: 600;
+        letter-spacing: 3px;
+        text-indent: 3px;
+        color: var(--mh-primary-dark-2);
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
     }
 
     .ball-phase {
@@ -398,6 +519,7 @@ onBeforeUnmount(() => {
         font-weight: 600;
         letter-spacing: 4px;
         text-indent: 4px;
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
     }
 
     .ball-count {
@@ -405,7 +527,16 @@ onBeforeUnmount(() => {
         font-weight: 600;
         line-height: 1.2;
         color: var(--mh-text-1);
+        text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
         font-variant-numeric: tabular-nums;
+    }
+
+    &.is-dragging {
+        cursor: grabbing;
+
+        .sphere-texture {
+            filter: blur(11px);
+        }
     }
 }
 

@@ -2,6 +2,9 @@ package com.rmh.aispringboot.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rmh.aispringboot.DTO.command.UserLoginCommandDTO;
+import com.rmh.aispringboot.DTO.command.UserPasswordResetCommandDTO;
+import com.rmh.aispringboot.DTO.command.UserPasswordUpdateCommandDTO;
+import com.rmh.aispringboot.DTO.command.UserProfileUpdateCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserStatusUpdateCommandDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
@@ -109,6 +112,45 @@ public class User {
 
         SecurityUserUtil.requireAdmin();
         return Result.ok(userService.updateStatus(id, commandDTO.getStatus()));
+    }
+
+    /**
+     * 修改个人资料（当前登录用户）：昵称 / 性别 / 生日
+     *
+     * <p>用户名/邮箱/手机号不在这里 —— 用户名是登录凭据，邮箱与手机号带唯一索引，
+     * 见 {@code UserProfileUpdateCommandDTO} 的说明。
+     */
+    @PutMapping("/profile")
+    public Result<UserLoginResponseDTO.UserDetailResponseDTO> updateProfile(
+            @Valid @RequestBody UserProfileUpdateCommandDTO commandDTO) {
+        return Result.ok(userService.updateProfile(commandDTO));
+    }
+
+    /**
+     * 修改自己的密码：必须填写原密码
+     *
+     * <p>忘记原密码的用户走不到这里，改用「联系管理员」留言（{@code POST /api/feedback/guest}
+     * 或登录后的 {@code POST /api/feedback}），由管理员在后台重置。
+     */
+    @PutMapping("/password")
+    public Result<Void> updatePassword(@Valid @RequestBody UserPasswordUpdateCommandDTO commandDTO) {
+        userService.updatePassword(commandDTO);
+        return Result.ok();
+    }
+
+    /**
+     * 重置用户密码（管理员）：用户忘记密码时的兜底手段，不需要原密码
+     *
+     * <p>管理员不能用这条接口改**自己**的密码（服务端会拒绝）：自己的密码必须走
+     * {@code PUT /api/user/password} 并填写原密码，否则「改密码要验原密码」这条规则对管理员形同虚设。
+     */
+    @PutMapping("/admin/{id}/password")
+    public Result<UserLoginResponseDTO.UserDetailResponseDTO> resetPassword(
+            @PathVariable("id") Long id,
+            @Valid @RequestBody UserPasswordResetCommandDTO commandDTO) {
+
+        SecurityUserUtil.requireAdmin();
+        return Result.ok(userService.resetPassword(id, commandDTO.getNewPassword()));
     }
 //    @GetMapping("/current")
 //    public Result<UserLoginResponseDTO.UserDetailResponseDTO> getCurrentUser(){

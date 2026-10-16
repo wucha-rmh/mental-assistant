@@ -73,6 +73,29 @@ export function updateUserStatus(id, data) {
     return service.put(`/user/admin/${id}/status`, data)
 }
 
+// 重置用户密码（用户忘记密码时的兜底手段，不需要原密码）
+export function resetUserPassword(id, data) {
+    return service.put(`/user/admin/${id}/password`, data)
+}
+
+// ==================== 留言管理（后台） ====================
+
+export function getFeedbackPage(params) {
+    return service.get('/feedback/admin/page', { params })
+}
+
+export function replyFeedback(id, data) {
+    return service.put(`/feedback/admin/${id}/reply`, data)
+}
+
+export function deleteFeedback(id) {
+    return service.delete(`/feedback/admin/${id}`)
+}
+
+export function getFeedbackPendingCount() {
+    return service.get('/feedback/admin/pending-count')
+}
+
 export function getAnalyticsOverview() {
     return service.get(`/data-analytics/overview`)
 }

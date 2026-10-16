@@ -50,6 +50,14 @@ const backendRoutes = [
                     title: '用户管理',
                     icon: 'UserFilled'
                 }
+            },
+            {
+                path: 'feedbacks',
+                component: () => import('@/views/feedbacks.vue'),
+                meta: {
+                    title: '留言管理',
+                    icon: 'ChatDotRound'
+                }
             }
         ]
     },
@@ -100,6 +108,10 @@ const frontendRoutes = [
                 path: 'knowledge/article/:id',
                 component: () => import('@/views/articleDetail.vue'),
                 props: true
+            },
+            {
+                path: 'profile',
+                component: () => import('@/views/profile.vue')
             }
         ]
     }

@@ -56,3 +56,30 @@ export const uploadAvatar = (file) => {
         }
     })
 }
+
+// ==================== 个人中心：资料 / 密码 / 留言 ====================
+
+// 修改个人资料（昵称 / 性别 / 生日），返回更新后的用户信息
+export const updateProfile = (data) => {
+    return service.put('/user/profile', data)
+}
+
+// 修改自己的密码：必须带 oldPassword（后端会校验）
+export const updatePassword = (data) => {
+    return service.put('/user/password', data)
+}
+
+// 给管理员留言（登录用户）
+export const submitFeedback = (data) => {
+    return service.post('/feedback', data)
+}
+
+// 给管理员留言（未登录：忘了密码、账号登不上时用，无需 token）
+export const submitGuestFeedback = (data) => {
+    return service.post('/feedback/guest', data)
+}
+
+// 我的留言（含管理员的回复）
+export const getMyFeedbackPage = (params) => {
+    return service.get('/feedback/mine', { params })
+}

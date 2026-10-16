@@ -14,6 +14,7 @@
                     <router-link to="/knowledge" class="nav-link">知识库</router-link>
                     <router-link to="/consultation" class="nav-link" v-if="isLoggedIn">AI 咨询</router-link>
                     <router-link to="/emotion-diary" class="nav-link" v-if="isLoggedIn">情绪日记</router-link>
+                    <router-link to="/profile" class="nav-link" v-if="isLoggedIn">个人中心</router-link>
                     <el-dropdown v-if="isLoggedIn" class="user-dropdown" @command="handleCommand">
                         <div class="user-box">
                             <el-avatar :size="30" :src="userStore.avatar" />

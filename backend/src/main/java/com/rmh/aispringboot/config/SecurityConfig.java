@@ -25,6 +25,9 @@ public class SecurityConfig {
             "/api/user/login",
             "/api/user/register",
             "/api/user/logout",
+            // 未登录也能给管理员留言：忘记密码 / 账号被禁用的人根本登不进来，
+            // 不留这个口子，「忘记密码请联系管理员」就是一句空话
+            "/api/feedback/guest",
             // 本地上传的文件（图片）必须匿名可读：<img src> 带不了 token
             "/files/**"
     };

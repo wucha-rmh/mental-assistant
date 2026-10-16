@@ -74,7 +74,7 @@
                     </template>
                 </el-table-column>
                 <el-table-column prop="createdAt" label="注册时间" width="170" />
-                <el-table-column label="操作" width="110" fixed="right">
+                <el-table-column label="操作" width="200" fixed="right">
                     <template #default="scope">
                         <div class="table-actions">
                             <el-button
@@ -88,6 +88,14 @@
                             </el-button>
                             <el-button v-else type="success" text @click="changeStatus(scope.row, 1)">
                                 启用
+                            </el-button>
+                            <el-button
+                                type="warning"
+                                text
+                                :disabled="scope.row.id === currentUserId"
+                                @click="openResetPassword(scope.row)"
+                            >
+                                重置密码
                             </el-button>
                         </div>
                     </template>
@@ -104,6 +112,45 @@
                 />
             </div>
         </el-card>
+
+        <!-- 重置密码（用户忘记密码时的兜底手段） -->
+        <el-dialog v-model="resetDialogVisible" title="重置密码" width="480px" :close-on-click-modal="false">
+            <el-alert
+                class="reset-tip"
+                type="warning"
+                :closable="false"
+                show-icon
+                title="重置后请把新密码告知用户本人；用户登录后可在「个人中心」自行修改"
+            />
+            <el-form ref="resetFormRef" :model="resetForm" :rules="resetRules" label-width="100px">
+                <el-form-item label="用户">
+                    <span>{{ resetRow ? (resetRow.nickname || resetRow.username) : '' }}</span>
+                </el-form-item>
+                <el-form-item label="新密码" prop="newPassword">
+                    <el-input
+                        v-model="resetForm.newPassword"
+                        type="password"
+                        show-password
+                        placeholder="6-32 位"
+                    />
+                </el-form-item>
+                <el-form-item label="确认新密码" prop="confirmPassword">
+                    <el-input
+                        v-model="resetForm.confirmPassword"
+                        type="password"
+                        show-password
+                        placeholder="再次输入新密码"
+                        @keyup.enter="submitResetPassword(resetFormRef)"
+                    />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="resetDialogVisible = false">取消</el-button>
+                <el-button type="primary" :loading="resetLoading" @click="submitResetPassword(resetFormRef)">
+                    确定重置
+                </el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
@@ -111,7 +158,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHead from '@/components/PageHead.vue'
-import { getUserPage, updateUserStatus } from '@/api/admin'
+import { getUserPage, updateUserStatus, resetUserPassword } from '@/api/admin'
 
 const tableData = ref([])
 const loading = ref(false)
@@ -203,6 +250,64 @@ const changeStatus = (row, status) => {
 onMounted(() => {
     loadUsers()
 })
+
+/* ---------------- 重置密码 ---------------- */
+const resetDialogVisible = ref(false)
+const resetFormRef = ref(null)
+const resetLoading = ref(false)
+const resetRow = ref(null)
+
+const resetForm = reactive({
+    newPassword: '',
+    confirmPassword: ''
+})
+
+const validateResetConfirm = (rule, value, callback) => {
+    if (value !== resetForm.newPassword) {
+        callback(new Error('两次输入的新密码不一致'))
+        return
+    }
+    callback()
+}
+
+const resetRules = reactive({
+    newPassword: [
+        { required: true, message: '请输入新密码', trigger: 'blur' },
+        { min: 6, max: 32, message: '密码长度 6-32 位', trigger: 'blur' }
+    ],
+    confirmPassword: [
+        { required: true, message: '请再次输入新密码', trigger: 'blur' },
+        { validator: validateResetConfirm, trigger: 'blur' }
+    ]
+})
+
+const openResetPassword = (row) => {
+    resetRow.value = row
+    resetForm.newPassword = ''
+    resetForm.confirmPassword = ''
+    resetDialogVisible.value = true
+}
+
+const submitResetPassword = (formEl) => {
+    if (!formEl || !resetRow.value) return
+    formEl.validate((valid) => {
+        if (!valid) return
+        resetLoading.value = true
+        resetUserPassword(resetRow.value.id, { newPassword: resetForm.newPassword }).then((res) => {
+            // 后端返回更新后的用户，就地替换这一行
+            const index = tableData.value.findIndex((item) => item.id === resetRow.value.id)
+            if (index > -1 && res) {
+                tableData.value[index] = res
+            }
+            ElMessage.success('密码已重置')
+            resetDialogVisible.value = false
+        }).catch(() => {
+            // 失败提示已由 request.js 统一处理
+        }).finally(() => {
+            resetLoading.value = false
+        })
+    })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -239,5 +344,9 @@ onMounted(() => {
         font-size: var(--mh-font-1);
         color: var(--mh-text-3);
     }
+}
+
+.reset-tip {
+    margin-bottom: var(--mh-space-4);
 }
 </style>

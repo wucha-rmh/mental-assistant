@@ -3,9 +3,12 @@
 --
 -- 生成方式：mysqldump --no-data --routines --triggers --events mental_health_assistant
 -- 生成时间：2026-10-15 18:21:42
--- 覆盖范围：8 张表（user / knowledge_category / knowledge_article /
+-- 覆盖范围：9 张表（user / knowledge_category / knowledge_article /
 --           consultation_session / consultation_message / emotion_diary /
---           sys_file_info / user_favorite）
+--           sys_file_info / user_favorite / user_feedback）
+--
+-- ⚠️ user_feedback（用户留言）是 2026-10-16 追加的，给已经在跑的库加这张表**不要**执行本文件
+--    （每个建表语句前都有 DROP TABLE），改跑 `db/migrations/20261016-user-feedback.sql`。
 --
 -- 用途：仓库里保存一份可重建的结构快照（此前结构只存在于本机 MySQL）。
 -- 还原到新库（脚本不含 CREATE DATABASE / USE，请先建库再导入）：
@@ -186,6 +189,28 @@ CREATE TABLE `user_favorite` (
   CONSTRAINT `user_favorite_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
   CONSTRAINT `user_favorite_ibfk_2` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户收藏表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `user_feedback`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `user_feedback` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '留言ID',
+  `user_id` bigint DEFAULT NULL COMMENT '留言用户ID（未登录留言为 NULL）',
+  `guest_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '未登录留言时填写的用户名',
+  `feedback_type` tinyint NOT NULL DEFAULT '4' COMMENT '留言类型 1:忘记密码/无法登录 2:账号问题 3:功能建议 4:其它',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '留言内容',
+  `contact` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '联系方式（可选）',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0:待处理 1:已回复',
+  `admin_reply` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '管理员回复内容',
+  `reply_admin_id` bigint DEFAULT NULL COMMENT '回复的管理员ID',
+  `replied_at` datetime DEFAULT NULL COMMENT '回复时间',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_user_feedback` (`user_id`,`created_at`) USING BTREE,
+  KEY `idx_status_time` (`status`,`created_at`) USING BTREE,
+  CONSTRAINT `user_feedback_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户留言表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

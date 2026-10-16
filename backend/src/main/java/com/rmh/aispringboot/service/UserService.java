@@ -2,8 +2,11 @@ package com.rmh.aispringboot.service;
 
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rmh.aispringboot.DTO.command.UserLoginCommandDTO;
+import com.rmh.aispringboot.DTO.command.UserPasswordUpdateCommandDTO;
+import com.rmh.aispringboot.DTO.command.UserProfileUpdateCommandDTO;
 import com.rmh.aispringboot.DTO.command.UserRegisterCommandDTO;
 import com.rmh.aispringboot.DTO.response.FileUploadResponseDTO;
 import com.rmh.aispringboot.DTO.response.UserLoginResponseDTO;
@@ -227,5 +230,97 @@ public class UserService {
         userMapper.updateById(user);
 
         return UserConvert.entityToDetaiResponse(user);
+    }
+
+    /**
+     * 修改当前登录用户的个人资料：昵称 / 性别 / 生日
+     *
+     * <p>只开放这三项（理由见 {@link UserProfileUpdateCommandDTO}）。这里刻意用
+     * {@code LambdaUpdateWrapper} 显式 set 而不是 {@code updateById}：
+     * MyBatis-Plus 的 {@code updateById} 会忽略 null 字段，用户就没法把性别/生日改回「未填」。
+     *
+     * @return 更新后的用户信息（前端用它刷新顶栏昵称与本地缓存）
+     */
+    public UserLoginResponseDTO.UserDetailResponseDTO updateProfile(UserProfileUpdateCommandDTO command) {
+        User user = requireCurrentUserEntity();
+
+        String nickname = StrUtil.isBlank(command.getNickname()) ? null : command.getNickname().trim();
+
+        userMapper.update(null, Wrappers.<User>lambdaUpdate()
+                .eq(User::getId, user.getId())
+                .set(User::getNickname, nickname)
+                .set(User::getGender, command.getGender())
+                .set(User::getBirthday, command.getBirthday())
+                .set(User::getUpdatedAt, LocalDateTime.now()));
+
+        return UserConvert.entityToDetaiResponse(userMapper.selectById(user.getId()));
+    }
+
+    /**
+     * 修改自己的密码：必须填写原密码
+     *
+     * <p>忘记原密码的用户走不到这里，改用「联系管理员」留言，由管理员在后台重置
+     * （见 {@link #resetPassword}）。
+     *
+     * <p>⚠️ 改密码**不会**让已经签发出去的 token 失效：JWT 是无状态的，旧 token 在过期前仍然可用
+     * （与「禁用用户」不同，后者靠 {@code JwtAuthenticationFilter} 每请求查库校验状态）。
+     * 前端在改完密码后会主动清掉本地 token 并要求重新登录，这是当前唯一的手段。
+     */
+    public void updatePassword(UserPasswordUpdateCommandDTO command) {
+        User user = requireCurrentUserEntity();
+
+        if (!passwordEncoder.matches(command.getOldPassword(), user.getPassword())) {
+            throw new BusinessException("原密码不正确");
+        }
+        if (!command.getNewPassword().equals(command.getConfirmPassword())) {
+            throw new BusinessException("两次输入的新密码不一致");
+        }
+        if (passwordEncoder.matches(command.getNewPassword(), user.getPassword())) {
+            throw new BusinessException("新密码不能与原密码相同");
+        }
+
+        userMapper.update(null, Wrappers.<User>lambdaUpdate()
+                .eq(User::getId, user.getId())
+                .set(User::getPassword, passwordEncoder.encode(command.getNewPassword()))
+                .set(User::getUpdatedAt, LocalDateTime.now()));
+    }
+
+    /**
+     * 重置某个用户的密码（管理员用，用户忘记密码时的兜底手段）
+     *
+     * <p>不需要用户的原密码 —— 用户想不起来密码正是管理员介入的原因。
+     * 但**管理员不能重置自己的密码**：那会绕过「改密码必须填原密码」这条唯一的口令再确认，
+     * 与「管理员不能改自己的状态」同理，自己改自己必须走 {@link #updatePassword}。
+     *
+     * @param userId      被重置的用户 ID
+     * @param newPassword 新密码（明文，服务端负责加密）
+     */
+    public UserLoginResponseDTO.UserDetailResponseDTO resetPassword(Long userId, String newPassword) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (userId.equals(SecurityUserUtil.currentUser().getId())) {
+            throw new BusinessException("不能在这里修改自己的密码，请在「修改密码」里填写原密码");
+        }
+
+        userMapper.update(null, Wrappers.<User>lambdaUpdate()
+                .eq(User::getId, userId)
+                .set(User::getPassword, passwordEncoder.encode(newPassword))
+                .set(User::getUpdatedAt, LocalDateTime.now()));
+
+        return UserConvert.entityToDetaiResponse(userMapper.selectById(userId));
+    }
+
+    /**
+     * 取当前登录用户对应的实体（SecurityContext 里的是登录时的快照，改资料前要拿最新行）
+     */
+    private User requireCurrentUserEntity() {
+        Long userId = SecurityUserUtil.currentUser().getId();
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        return user;
     }
 }

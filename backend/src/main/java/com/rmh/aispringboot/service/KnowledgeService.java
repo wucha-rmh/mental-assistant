@@ -16,6 +16,7 @@ import com.rmh.aispringboot.mapper.KnowledgeCategoryMapper;
 import com.rmh.aispringboot.mapper.UserMapper;
 import com.rmh.aispringboot.util.WebParamUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -24,11 +25,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -38,6 +43,7 @@ import java.util.stream.Collectors;
  * 写接口：新增、编辑、上下架、删除（仅管理员，见 {@code KnowledgeController}）。
  */
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class KnowledgeService {
 
@@ -46,6 +52,10 @@ public class KnowledgeService {
 
     /** 草稿状态：新增的文章一律先落草稿，需管理员在列表里点「发布」才对外可见 */
     private static final int STATUS_DRAFT = 0;
+
+    /** 正文 {@code <img>} 的 src 属性（单双引号都认），用来找出正文里插的本地图片 */
+    private static final Pattern IMG_SRC_PATTERN =
+            Pattern.compile("<img\\b[^>]*?\\bsrc\\s*=\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
 
     private final KnowledgeCategoryMapper knowledgeCategoryMapper;
     private final KnowledgeArticleMapper knowledgeArticleMapper;
@@ -212,6 +222,8 @@ public class KnowledgeService {
 
         String oldCover = article.getCoverImage();
         String newCover = trimToEmpty(command.getCoverImage());
+        // 编辑前先把正文里的插图路径记下来，改完才能算出哪些图被删掉了
+        Set<String> oldInlineImages = extractInlineImagePaths(article.getContent());
 
         LambdaUpdateWrapper<KnowledgeArticle> update = Wrappers.lambdaUpdate(KnowledgeArticle.class)
                 .eq(KnowledgeArticle::getId, id)
@@ -224,10 +236,13 @@ public class KnowledgeService {
                 .set(KnowledgeArticle::getUpdatedAt, LocalDateTime.now());
         knowledgeArticleMapper.update(null, update);
 
-        // 换过封面就把旧图删掉，避免 uploads 里堆孤儿文件
+        // 换掉的旧封面、以及正文里被删掉的插图，只要没被别的文章引用就一并清掉
+        Set<String> obsolete = new LinkedHashSet<>(oldInlineImages);
+        obsolete.removeAll(extractInlineImagePaths(command.getContent()));
         if (oldCover != null && !oldCover.equals(newCover)) {
-            fileStorageService.deleteStoredFile(oldCover);
+            obsolete.add(oldCover);
         }
+        cleanupUnreferencedFiles(id, obsolete);
         return getArticleDetail(id);
     }
 
@@ -254,18 +269,84 @@ public class KnowledgeService {
     }
 
     /**
-     * 删除文章，顺带清掉它的本地封面文件（只删 {@code /files/} 下的）
+     * 删除文章，顺带清掉它自己的本地封面与正文插图（只删 {@code /files/} 下的，且必须没被别的文章引用）
      */
     public void deleteArticle(String id) {
         KnowledgeArticle article = knowledgeArticleMapper.selectById(id);
         if (article == null) {
             throw new BusinessException("文章不存在或已删除");
         }
+        // 先算好要清理哪些文件：删完记录就取不到正文了
+        Set<String> candidates = extractInlineImagePaths(article.getContent());
+        candidates.add(trimToEmpty(article.getCoverImage()));
         knowledgeArticleMapper.deleteById(id);
-        fileStorageService.deleteStoredFile(article.getCoverImage());
+        cleanupUnreferencedFiles(id, candidates);
     }
 
     // ── 内部工具 ────────────────────────────────────────────────────
+
+    /**
+     * 从正文 HTML 里找出本地图片路径（{@code /files/...}）
+     *
+     * <p>插图的 src 由前端拼成 {@code fileBaseUrl + filePath}，所以两种情况都要认：
+     * 相对路径 {@code /files/x.jpg}、以及带域名的绝对地址 {@code http://host/files/x.jpg}（统一截成前缀开始的部分）。
+     * 返回 {@link LinkedHashSet}：去重，且顺序稳定（便于日志与测试断言）。
+     */
+    private static Set<String> extractInlineImagePaths(String content) {
+        Set<String> paths = new LinkedHashSet<>();
+        if (!StringUtils.hasText(content)) {
+            return paths;
+        }
+        Matcher matcher = IMG_SRC_PATTERN.matcher(content);
+        while (matcher.find()) {
+            String src = matcher.group(1).trim().replace("&amp;", "&");
+            int queryIndex = src.indexOf('?');
+            if (queryIndex >= 0) {
+                src = src.substring(0, queryIndex);
+            }
+            int prefixIndex = src.indexOf(FileStorageService.URL_PREFIX);
+            if (prefixIndex >= 0) {
+                paths.add(src.substring(prefixIndex));
+            }
+        }
+        return paths;
+    }
+
+    /**
+     * 删除不再被任何文章引用的本地文件
+     *
+     * <p>同一个文件可能被多篇文章复用（管理员复制粘贴正文 HTML），所以删之前要查：
+     * 有没有别的文章把它当封面（{@code cover_image} 相等），或者正文里出现过这个路径。
+     * {@code excludeArticleId} 是刚刚删掉/改掉的文章，查引用时排除它自己。
+     * 清理失败不影响主流程（{@link FileStorageService#deleteStoredFile} 本身不抛异常）。
+     */
+    private void cleanupUnreferencedFiles(String excludeArticleId, Collection<String> filePaths) {
+        int deleted = 0;
+        for (String filePath : filePaths) {
+            if (!StringUtils.hasText(filePath) || !filePath.startsWith(FileStorageService.URL_PREFIX)) {
+                continue;
+            }
+            if (isReferencedByOtherArticle(filePath, excludeArticleId)) {
+                log.info("文件 {} 仍被其它文章引用，跳过清理（文章 {}）", filePath, excludeArticleId);
+                continue;
+            }
+            fileStorageService.deleteStoredFile(filePath);
+            deleted++;
+        }
+        if (deleted > 0) {
+            log.info("文章 {} 已清理 {} 个不再被引用的本地文件", excludeArticleId, deleted);
+        }
+    }
+
+    /** 除 {@code excludeArticleId} 之外，还有没有文章引用这个文件 */
+    private boolean isReferencedByOtherArticle(String filePath, String excludeArticleId) {
+        Long count = knowledgeArticleMapper.selectCount(Wrappers.<KnowledgeArticle>lambdaQuery()
+                .ne(KnowledgeArticle::getId, excludeArticleId)
+                .and(wrapper -> wrapper.eq(KnowledgeArticle::getCoverImage, filePath)
+                        .or()
+                        .like(KnowledgeArticle::getContent, filePath)));
+        return count != null && count > 0;
+    }
 
     /**
      * 解析并校验分类ID

@@ -43,3 +43,9 @@ file:
   upload-dir: ./uploads  # 相对于后端工作目录，即 backend/uploads；对外访问前缀是 /files/**
   temp-cleanup-cron: "0 30 3 * * ?"  # 过期临时文件（is_temp=1 且 expire_time 已过）的清理时间，默认每天 03:30
 
+# 流式对话（SSE /api/psychological-chat/stream）
+stream:
+  # 每个 SSE 分块之间的额外延时（毫秒）。默认 10：模型一口气吐一批时摊成逐字感；
+  # 配 0 或负数则不加延时，完全跟随模型出词节奏（更快，但可能整段弹出）。
+  chunk-delay-ms: 10
+

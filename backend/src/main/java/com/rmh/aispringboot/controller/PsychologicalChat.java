@@ -20,6 +20,7 @@ import com.rmh.aispringboot.service.ConsultationSessionService;
 import com.rmh.aispringboot.util.JwtTokenUtil;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.security.core.Authentication;
@@ -46,6 +47,15 @@ public class PsychologicalChat {
     private ConsultationMessageService consultationMessageService;
     @Autowired
     private EmotionAnalysisService emotionAnalysisService;
+
+    /**
+     * 流式分块发送的额外间隔（毫秒）。
+     *
+     * <p>来自 {@code stream.chunk-delay-ms}，默认 10；配成 0 或负数表示不加延时，
+     * 完全跟随模型出词节奏。见 {@code application.yaml} 里的同名配置。
+     */
+    @Value("${stream.chunk-delay-ms:10}")
+    private long chunkDelayMs;
 
     @PostMapping("/session/start")
     public Result<StructOutPut.StreamChatSession> startSession(@Valid @RequestBody ConsultationSessionCreateDTO createDTO){
@@ -85,7 +95,10 @@ public class PsychologicalChat {
                         .event("error")
                         .data(JSONUtil.toJsonStr(Result.error(ResultCode.ERROR.getCode(), e.getMessage(), null)))
                         .build()))
-                .delayElements(Duration.ofMillis(10));//添加延时，确保流式输出体验
+                //分块间隔走配置 stream.chunk-delay-ms（默认 10ms）；<=0 时不加延时，完全跟随模型节奏
+                .transform(events -> chunkDelayMs > 0
+                        ? events.delayElements(Duration.ofMillis(chunkDelayMs))
+                        : events);
     }
 
     /**

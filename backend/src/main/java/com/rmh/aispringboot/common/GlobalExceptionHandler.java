@@ -3,11 +3,14 @@ package com.rmh.aispringboot.common;
 
 import com.rmh.aispringboot.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
 
@@ -44,7 +47,20 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 兜底：未被上面两个处理器覆盖的异常（JSON 解析失败、NPE、SQL 异常、404 等）
+     * 静态资源不存在：/files/** 取不到文件、或访问到未映射的路径时，
+     * Spring MVC 抛 NoResourceFoundException。不单独处理就会被下面的 Exception 兜底
+     * 转成 HTTP 200 + code 500 —— 语义是错的：浏览器、日志、监控都会把 404 当成功，
+     * 真实错误率看不出来；这里改成规范的 404（响应体仍是统一响应体，前端照样能读到 msg）。
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<String> handleNoResourceFoundException(NoResourceFoundException e) {
+        log.warn("资源不存在: {}", e.getResourcePath());
+        return Result.error(ResultCode.FILE_NOT_FOUND.getCode(), "文件不存在", null);
+    }
+
+    /**
+     * 兜底：未被上面几个处理器覆盖的异常（JSON 解析失败、NPE、SQL 异常等）
      * 也返回统一响应体，避免前端拿到 Spring 默认错误 JSON 而读不到 msg。
      */
     @ExceptionHandler(Exception.class)

@@ -69,9 +69,19 @@ const props = defineProps({
       'fontSize', 'fontFamily', '|',
       'header1', 'header2', 'header3', '|',
       'bulletedList', 'numberedList', 'blockquote', '|',
-      'insertLink', '|',
+      'insertLink', 'uploadImage', '|',
       'undo', 'redo'
     ]
+  },
+  /**
+   * 正文插图的上传函数：(file) => Promise<图片可访问地址>
+   *
+   * 不配就只保留按钮、点击时提示未启用 —— 因为 wangEditor 自带的 XHR 上传
+   * 不会带 token 头，必须由调用方用项目自己的 axios 实例传（见 ArticleDialog）。
+   */
+  imageUploader: {
+    type: Function,
+    default: null
   },
   minHeight: {
     type: String,
@@ -166,6 +176,31 @@ const editorConfig = reactive({
     // 添加更多功能配置
     lineHeight: {
       lineHeightList: ['1', '1.15', '1.2', '1.5', '1.75', '2', '2.5', '3']
+    },
+    // 正文插图：走 customUpload，不用 server（自带 XHR 不带 token 头）
+    uploadImage: {
+      allowedFileTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'],
+      // 与后端一致：5MB（backend/src/main/resources/application.yaml 的 multipart 上限）
+      maxFileSize: 5 * 1024 * 1024,
+      // 不把图片转成 base64 塞进正文（会撑爆 longtext 且失去浏览器缓存）
+      base64LimitSize: 0,
+      customUpload: async (file, insertFn) => {
+        if (!props.imageUploader) {
+          ElMessage.warning('当前页面未启用图片上传')
+          return
+        }
+        try {
+          const url = await props.imageUploader(file)
+          if (url) {
+            insertFn(url, file.name || '图片', '')
+          }
+        } catch (e) {
+          // 失败提示已由 axios 拦截器统一弹出（ElMessage.error），这里不再重复报错
+        }
+      },
+      onError: (file) => {
+        console.warn('[RichTextEditor] 图片上传失败:', file && file.name)
+      }
     }
   }
 })

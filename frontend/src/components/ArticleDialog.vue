@@ -25,7 +25,7 @@
                 </el-select>
             </el-form-item>
             <el-form-item label="文章摘要" prop="summary">
-                <el-input type="textarea" v-model="formData.summary" placeholder="请输入文章摘要(可选)" maxlength="1000" show-word-limit :rows="4" />
+                <el-input type="textarea" v-model="formData.summary" placeholder="请输入文章摘要(可选)" maxlength="2000" show-word-limit :rows="4" />
             </el-form-item>
             <el-form-item label="标签" prop="tags">
                 <el-select v-model="formData.tagArray" placeholder="请输入文章标签(逗号分隔)" multiple filterable allow-create style="width: 100%">
@@ -56,9 +56,10 @@
                 <RichTextEditor
                     v-model="formData.content"
                     placeholder="请输入文章内容，支持富文本格式\n\n可以使用加粗、斜体、列表、标题等格式来丰富文章内容。"
-                    :maxCharCount="5000"
+                    :maxCharCount="20000"
                     @change="handleContentChange"
                     @created="handleEditorCreated"
+                    :imageUploader="handleContentImageUpload"
                     min-height="400px"
                     />
             </el-form-item>
@@ -77,7 +78,7 @@
 <script setup>
 import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { uploadFile, createArticle, updateArticle } from '@/api/admin'
+import { uploadFile, uploadContentImage, createArticle, updateArticle } from '@/api/admin'
 import { fileBaseUrl } from '@/config/index.js'
 import RichTextEditor from '@/components/RichTextEditor.vue'
 
@@ -158,7 +159,7 @@ const rules = reactive({
     ],
     content: [
         { required: true, message: '请输入文章内容', trigger: 'blur' },
-        { max: 5000, message: '文章内容最多5000个字符', trigger: 'blur' }
+        { max: 20000, message: '文章内容最多20000个字符', trigger: 'blur' }
     ],
 })
 
@@ -202,6 +203,15 @@ const handleUploadRequest = async ({ file }) => {
 const handleRemove = () => {
     imgUrl.value = ''
     formData.coverImage = ''
+}
+
+/**
+ * 正文插图上传：交给 RichTextEditor 的 uploadImage 菜单调用。
+ * 返回的是可直接放进 <img src> 的地址（fileBaseUrl 目前是空串 = 同源 /files/...）。
+ */
+const handleContentImageUpload = async (file) => {
+    const fileRes = await uploadContentImage(file)
+    return fileBaseUrl + fileRes.filePath
 }
 
 // 富文本

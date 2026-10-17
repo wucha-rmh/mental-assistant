@@ -39,7 +39,7 @@ public class KnowledgeArticleCommandDTO {
     private String summary;
 
     @NotBlank(message = "文章内容不能为空")
-    @Size(max = 5000, message = "文章内容最多5000个字符")
+    @Size(max = 20000, message = "文章内容最多20000个字符")
     private String content;
 
     /** 封面地址：{@code /files/...} 相对路径或空串（前端会拼 fileBaseUrl） */

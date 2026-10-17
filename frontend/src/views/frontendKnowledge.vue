@@ -121,9 +121,11 @@
         getPageList()
     }
 
-    // 跳转到详情
+    // 打开详情：新标签页打开，读者原来的列表页（含已滚动位置、筛选条件）不丢
     const goToArticle = (id) => {
-        router.push(`/knowledge/article/${id}`)
+        // 用 router.resolve 生成 href，带 base URL 与编码，避免手拼字符串出错
+        const { href } = router.resolve(`/knowledge/article/${id}`)
+        window.open(href, '_blank', 'noopener')
     }
 
     onMounted(() => {

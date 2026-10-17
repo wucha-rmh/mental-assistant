@@ -10,11 +10,15 @@
                     </div>
                 </router-link>
                 <nav class="nav-section">
-                    <router-link to="/" class="nav-link">首页</router-link>
-                    <router-link to="/knowledge" class="nav-link">知识库</router-link>
-                    <router-link to="/consultation" class="nav-link" v-if="isLoggedIn">AI 咨询</router-link>
-                    <router-link to="/emotion-diary" class="nav-link" v-if="isLoggedIn">情绪日记</router-link>
-                    <router-link to="/profile" class="nav-link" v-if="isLoggedIn">个人中心</router-link>
+                    <!--
+                      选中态不能用 router-link-active：to="/" 会被当成所有路径的前缀，
+                      「首页」在任何页面都亮。这里按当前 path 精确判断。
+                    -->
+                    <router-link to="/" class="nav-link" :class="{ 'nav-active': isActive('/') }">首页</router-link>
+                    <router-link to="/knowledge" class="nav-link" :class="{ 'nav-active': isActive('/knowledge') }">知识库</router-link>
+                    <router-link to="/consultation" class="nav-link" :class="{ 'nav-active': isActive('/consultation') }" v-if="isLoggedIn">AI 咨询</router-link>
+                    <router-link to="/emotion-diary" class="nav-link" :class="{ 'nav-active': isActive('/emotion-diary') }" v-if="isLoggedIn">情绪日记</router-link>
+                    <router-link to="/profile" class="nav-link" :class="{ 'nav-active': isActive('/profile') }" v-if="isLoggedIn">个人中心</router-link>
                     <el-dropdown v-if="isLoggedIn" class="user-dropdown" @command="handleCommand">
                         <div class="user-box">
                             <el-avatar :size="30" :src="userStore.avatar" />
@@ -29,7 +33,7 @@
                         </template>
                     </el-dropdown>
                     <template v-else>
-                        <router-link to="/auth/login" class="nav-link">登录</router-link>
+                        <router-link to="/auth/login" class="nav-link" :class="{ 'nav-active': isActive('/auth') }">登录</router-link>
                         <router-link to="/auth/register">
                             <el-button type="primary" round>免费注册</el-button>
                         </router-link>
@@ -46,12 +50,26 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { logout } from '@/api/admin'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import AvatarUploader from '@/components/AvatarUploader.vue'
 
 const router = useRouter()
+const route = useRoute()
+
+/**
+ * 导航选中判断。
+ * 首页必须精确匹配（'/' 是所有路径的前缀，用前缀会永远亮）；
+ * 其余按「本路径或下级路径」判断，例如 /knowledge/article/xxx 仍归「知识库」。
+ */
+const isActive = (path) => {
+    if (path === '/') {
+        return route.path === '/'
+    }
+    return route.path === path || route.path.startsWith(path + '/')
+}
+
 // 当前登录用户（登录时由 login.vue 写进 localStorage.userInfo）
 const userStore = useUserStore()
 const avatarUploader = ref(null)
@@ -170,15 +188,13 @@ onMounted(() => {
                 color: var(--mh-primary);
             }
 
-            /* 当前所在页高亮（旧实现没有选中态） */
-            &.router-link-exact-active,
-            &.router-link-active {
+            /* 当前所在页高亮：由 isActive() 算出的 nav-active，不再依赖 router-link-active */
+            &.nav-active {
                 color: var(--mh-primary);
                 font-weight: 600;
             }
 
-            &.router-link-exact-active::after,
-            &.router-link-active::after {
+            &.nav-active::after {
                 content: '';
                 position: absolute;
                 left: 0;

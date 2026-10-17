@@ -28,6 +28,27 @@ export function uploadFile(file, businessInfo) {
 }
 
 
+/**
+ * 上传「正文插图」。
+ *
+ * 与封面共用 /file/upload，只是 businessField 记为 content（封面是 cover），
+ * 后端按 businessType=ARTICLE 落到 uploads/bussiness/article/。
+ * 必须走这个 axios 实例：wangEditor 自带的 XHR 上传不带 token 头，会被网关 401。
+ */
+export function uploadContentImage(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('businessType', 'ARTICLE')
+    formData.append('businessField', 'content')
+
+    return service.post('/file/upload', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        }
+    })
+}
+
+
 export function createArticle(data) {
     return service.post('/knowledge/article', data)
 }

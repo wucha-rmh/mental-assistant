@@ -8,11 +8,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.rmh.aispringboot.DTO.command.ConsultationSessionCreateDTO;
 import com.rmh.aispringboot.DTO.response.ConsultationMessageResponseDTO;
 import com.rmh.aispringboot.DTO.response.SessionListItemDTO;
+import com.rmh.aispringboot.common.ConversationIds;
 import com.rmh.aispringboot.entity.ConsultationSession;
 import com.rmh.aispringboot.entity.User;
 import com.rmh.aispringboot.exception.BusinessException;
 import com.rmh.aispringboot.mapper.ConsultationSessionMapper;
 import com.rmh.aispringboot.mapper.UserMapper;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +24,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class ConsultationSessionService {
 
@@ -34,9 +38,13 @@ public class ConsultationSessionService {
     @Autowired
     private ConsultationMessageService consultationMessageService;
 
+    @Autowired
+    private ChatMemory chatMemory;
+
     public ConsultationSession createSession(Long userId, ConsultationSessionCreateDTO createDTO)
     {
         User user = userMapper.selectById(userId);
+        //先验证用户是否存在
         if(user!=null)
         {
             //创建会话记录
@@ -53,7 +61,6 @@ public class ConsultationSessionService {
             consultationSessionMapper.insert(session);
             return session;
         }
-        //先验证用户是否存在
         return null;
     }
 
@@ -109,15 +116,18 @@ public class ConsultationSessionService {
         return result;
     }
 
-    /**
-     * 删除会话及其全部消息（先校验归属）
-     */
     public void deleteSession(Long sessionId, Long userId) {
         if (getSessionByIdAndUserId(sessionId, userId) == null) {
             throw new BusinessException("会话不存在或无权访问");
         }
         consultationMessageService.deleteBySessionId(sessionId);
         consultationSessionMapper.deleteById(sessionId);
+        // 记忆窗口不在库里，删会话要顺手清掉，否则 Redis 里会留下再也访问不到的 key
+        try {
+            chatMemory.clear(ConversationIds.ofSessionId(sessionId));
+        } catch (Exception e) {
+            log.warn("清空对话记忆失败 sessionId={}：{}", sessionId, e.getMessage());
+        }
     }
 
     /**

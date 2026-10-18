@@ -2,6 +2,7 @@ package com.rmh.aispringboot.AiService;
 
 import com.rmh.aispringboot.DTO.command.ConsultationSessionCreateDTO;
 import com.rmh.aispringboot.DTO.response.ConsultationMessageResponseDTO;
+import com.rmh.aispringboot.common.ConversationIds;
 import com.rmh.aispringboot.entity.ConsultationSession;
 import com.rmh.aispringboot.exception.BusinessException;
 import com.rmh.aispringboot.service.ConsultationMessageService;
@@ -37,7 +38,7 @@ public class PsychologicalSupportService {
     /** 业务会话 ID 前缀，形如 session_1 */
     private static final String SESSION_ID_PREFIX = "session_";
     /** 对话记忆标识前缀，形如 conversation_session_1 */
-    private static final String CONVERSATION_ID_PREFIX = "conversation_";
+    //private static final String CONVERSATION_ID_PREFIX = "conversation_";
     /** 会话有效期：24 小时 */
     private static final long SESSION_TTL_MILLIS = 86_400_000L;
     /** 会话初始状态 */
@@ -127,8 +128,8 @@ public class PsychologicalSupportService {
         if (!isInitialMessage(dbSessionId, userMessage)) {
             consultationMessageService.saveUserMessage(dbSessionId, userMessage);
         }
-
-        String conversationId = CONVERSATION_ID_PREFIX + sessionIdString;
+        // 原来：String conversationId = CONVERSATION_ID_PREFIX + sessionIdString;
+        String conversationId = ConversationIds.ofSessionId(dbSessionId);
         StringBuilder fullResponse = new StringBuilder();
 
         // ⭐ 后端重启后记忆窗口是空的，先用数据库里的历史回灌，避免 AI「失忆」

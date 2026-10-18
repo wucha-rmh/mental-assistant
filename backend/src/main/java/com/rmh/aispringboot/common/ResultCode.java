@@ -10,6 +10,7 @@ public enum ResultCode {
     PARAM_ERROR("400", "参数错误"),
     PARAM_MISSING("4001", "缺少必要参数"),
     PARAM_INVALID("4002", "参数格式不正确"),
+    METHOD_NOT_ALLOWED("405", "请求方法不支持"),
 
     // 文件操作相关错误
     FILE_NOT_FOUND("5001", "文件不存在"),

@@ -3,8 +3,10 @@ package com.rmh.aispringboot.common;
 
 import com.rmh.aispringboot.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -57,6 +59,25 @@ public class GlobalExceptionHandler {
     public Result<String> handleNoResourceFoundException(NoResourceFoundException e) {
         log.warn("资源不存在: {}", e.getResourcePath());
         return Result.error(ResultCode.FILE_NOT_FOUND.getCode(), "文件不存在", null);
+    }
+
+    /**
+     * 请求方法不匹配：例如文章列表的正确端点是 GET /api/knowledge/article/page，
+     * 写成 GET /api/knowledge/article 时 Spring MVC 抛 HttpRequestMethodNotSupportedException。
+     * 不单独处理会被下面的 Exception 兜底洗成 HTTP 200 + code 500 —— 明明是调用方用错了方法，
+     * 却报警成服务端故障。这里改成规范的 405，并在 msg 里写明该接口支持哪些方法（排错时一眼看到）。
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    public Result<String> handleHttpRequestMethodNotSupportedException(HttpRequestMethodNotSupportedException e) {
+        String supported = e.getSupportedHttpMethods() == null
+                ? ""
+                : e.getSupportedHttpMethods().stream().map(HttpMethod::name).collect(Collectors.joining("/"));
+        log.warn("请求方法不支持: {}（该接口支持 {}）", e.getMethod(), supported);
+        String msg = supported.isEmpty()
+                ? ResultCode.METHOD_NOT_ALLOWED.getMsg() + "：" + e.getMethod()
+                : "请求方法不支持：" + e.getMethod() + "，该接口仅支持 " + supported;
+        return Result.error(ResultCode.METHOD_NOT_ALLOWED.getCode(), msg, null);
     }
 
     /**

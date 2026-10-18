@@ -15,7 +15,7 @@
 - 注册 / 登录 / 头像上传 / 个人中心（昵称、性别、生日；修改密码需验证原密码）
 - AI 心理疏导：SSE 流式回复、多会话管理、历史消息回看
 - 情绪日记：一天一条（重复提交即更新当天），心情评分 + 今日感想，含趋势与历史列表
-- 心理知识库：分类树、文章列表与详情、阅读量计数、收藏
+- 心理知识库：分类树、文章列表与详情、阅读量计数
 - 忘记密码：未登录也能给管理员留言求助
 
 **管理后台**（前端路由按 `userType` 分流，管理员只进 `/back/**`）
@@ -48,7 +48,7 @@ mental_health_assistant/
 │       ├── components/ api/ stores/
 │       └── styles/tokens.scss     # 设计令牌（颜色 / 圆角 / 阴影 / 间距）
 └── db/
-    ├── schema.sql                 # 库表结构（9 张表，不含数据）
+    ├── schema.sql                 # 库表结构（8 张表，不含数据）
     └── seed-demo-data.sql         # 演示数据（可重复执行）
 ```
 
@@ -113,7 +113,7 @@ jwt:
 
 ## 数据库
 
-9 张表：`user`、`consultation_session`、`consultation_message`、`emotion_diary`、`knowledge_category`、`knowledge_article`、`user_favorite`、`sys_file_info`、`user_feedback`。
+8 张表：`user`、`consultation_session`、`consultation_message`、`emotion_diary`、`knowledge_category`、`knowledge_article`、`sys_file_info`、`user_feedback`。
 
 - `db/schema.sql`：表结构快照，可随时重建（⚠️ 每张表前都有 `DROP TABLE`，**只用于建空库**）
 - `db/seed-demo-data.sql`：演示数据，可重复执行（只清理自己写入的演示数据）

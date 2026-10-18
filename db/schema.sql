@@ -2,10 +2,10 @@
 -- 心理健康AI助手 —— 数据库结构基线（仅表结构，不含业务数据）
 --
 -- 生成方式：mysqldump --no-data --routines --triggers --events mental_health_assistant
--- 生成时间：2026-10-15 18:21:42
--- 覆盖范围：9 张表（user / knowledge_category / knowledge_article /
+-- 生成时间：2026-10-18 13:12:03（删除 user_favorite 后重新导出）
+-- 覆盖范围：8 张表（user / knowledge_category / knowledge_article /
 --           consultation_session / consultation_message / emotion_diary /
---           sys_file_info / user_favorite / user_feedback）
+--           sys_file_info / user_feedback）
 --
 -- ⚠️ user_feedback（用户留言）是 2026-10-16 追加的，给已经在跑的库加这张表**不要**执行本文件
 --    （每个建表语句前都有 DROP TABLE），改跑 `db/migrations/20261016-user-feedback.sql`。
@@ -18,6 +18,8 @@
 -- ⚠️ 脚本含 DROP TABLE IF EXISTS：务必确认目标库，别对着正式库执行。
 -- ⚠️ 这是「结构」快照，不含任何业务数据；数据备份见 .db-backup/（不纳入 git）。
 -- ⚠️ 改了库结构（手工 ALTER 或迁移）后要重新导出本文件，否则它会与库漂移。
+-- 2026-10-17：DROP 掉零引用的 user_favorite（脚手架遗留，项目从未实现收藏功能），
+--            迁移脚本见 db/migrations/20261017-drop-user-favorite.sql。
 -- ============================================================
 
 SET NAMES utf8mb4;
@@ -46,7 +48,7 @@ CREATE TABLE `consultation_message` (
   PRIMARY KEY (`id`) USING BTREE,
   KEY `idx_session_message` (`session_id`,`created_at`) USING BTREE,
   CONSTRAINT `consultation_message_ibfk_1` FOREIGN KEY (`session_id`) REFERENCES `consultation_session` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=154 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='咨询消息表';
+) ENGINE=InnoDB AUTO_INCREMENT=231 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='咨询消息表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `consultation_session`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -62,7 +64,7 @@ CREATE TABLE `consultation_session` (
   KEY `idx_user_session` (`user_id`,`started_at`) USING BTREE,
   KEY `idx_last_emotion_updated_at` (`last_emotion_updated_at`) USING BTREE,
   CONSTRAINT `consultation_session_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='咨询会话表';
+) ENGINE=InnoDB AUTO_INCREMENT=50 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='咨询会话表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `emotion_diary`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -79,7 +81,7 @@ CREATE TABLE `emotion_diary` (
   UNIQUE KEY `user_date_unique` (`user_id`,`diary_date`) USING BTREE,
   KEY `idx_user_diary` (`user_id`,`diary_date`) USING BTREE,
   CONSTRAINT `emotion_diary_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='情绪日记表';
+) ENGINE=InnoDB AUTO_INCREMENT=63 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='情绪日记表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `knowledge_article`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -148,7 +150,7 @@ CREATE TABLE `sys_file_info` (
   KEY `idx_status` (`status`) USING BTREE,
   KEY `idx_temp_expire` (`is_temp`,`expire_time`) USING BTREE,
   KEY `idx_create_time` (`create_time`) USING BTREE
-) ENGINE=InnoDB AUTO_INCREMENT=72 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='系统文件信息表';
+) ENGINE=InnoDB AUTO_INCREMENT=87 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='系统文件信息表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `user`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -173,44 +175,29 @@ CREATE TABLE `user` (
   UNIQUE KEY `phone` (`phone`) USING BTREE,
   KEY `idx_username` (`username`) USING BTREE,
   KEY `idx_user_type` (`user_type`) USING BTREE
-) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户表';
-/*!40101 SET character_set_client = @saved_cs_client */;
-DROP TABLE IF EXISTS `user_favorite`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `user_favorite` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '收藏ID',
-  `user_id` bigint NOT NULL COMMENT '用户ID',
-  `article_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文章ID',
-  `created_at` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `user_article_unique` (`user_id`,`article_id`) USING BTREE,
-  KEY `article_id` (`article_id`) USING BTREE,
-  CONSTRAINT `user_favorite_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
-  CONSTRAINT `user_favorite_ibfk_2` FOREIGN KEY (`article_id`) REFERENCES `knowledge_article` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE=InnoDB AUTO_INCREMENT=9 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户收藏表';
+) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `user_feedback`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `user_feedback` (
-  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '留言ID',
-  `user_id` bigint DEFAULT NULL COMMENT '留言用户ID（未登录留言为 NULL）',
-  `guest_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '未登录留言时填写的用户名',
-  `feedback_type` tinyint NOT NULL DEFAULT '4' COMMENT '留言类型 1:忘记密码/无法登录 2:账号问题 3:功能建议 4:其它',
-  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '留言内容',
-  `contact` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '联系方式（可选）',
-  `status` tinyint NOT NULL DEFAULT '0' COMMENT '状态 0:待处理 1:已回复',
-  `admin_reply` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '管理员回复内容',
-  `reply_admin_id` bigint DEFAULT NULL COMMENT '回复的管理员ID',
-  `replied_at` datetime DEFAULT NULL COMMENT '回复时间',
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '鐣欒█ID',
+  `user_id` bigint DEFAULT NULL COMMENT '鐣欒█鐢ㄦ埛ID锛堟湭鐧诲綍鐣欒█涓?NULL锛',
+  `guest_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '鏈?櫥褰曠暀瑷?椂濉?啓鐨勭敤鎴峰悕',
+  `feedback_type` tinyint NOT NULL DEFAULT '4' COMMENT '鐣欒█绫诲瀷 1:蹇樿?瀵嗙爜/鏃犳硶鐧诲綍 2:璐﹀彿闂?? 3:鍔熻兘寤鸿? 4:鍏跺畠',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '鐣欒█鍐呭?',
+  `contact` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '鑱旂郴鏂瑰紡锛堝彲閫夛級',
+  `status` tinyint NOT NULL DEFAULT '0' COMMENT '鐘舵? 0:寰呭?鐞?1:宸插洖澶',
+  `admin_reply` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '绠＄悊鍛樺洖澶嶅唴瀹',
+  `reply_admin_id` bigint DEFAULT NULL COMMENT '鍥炲?鐨勭?鐞嗗憳ID',
+  `replied_at` datetime DEFAULT NULL COMMENT '鍥炲?鏃堕棿',
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`) USING BTREE,
   KEY `idx_user_feedback` (`user_id`,`created_at`) USING BTREE,
   KEY `idx_status_time` (`status`,`created_at`) USING BTREE,
   CONSTRAINT `user_feedback_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户留言表';
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='鐢ㄦ埛鐣欒█琛';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

@@ -4,7 +4,7 @@
 -- 作用：在已有库上「丰富」内容，让前台咨询记录、情绪日记曲线、知识文章列表、
 --       后台用户管理/统计都有像样的数据可看。
 --       写入 5 个演示账号（密码统一 123456）、6 场咨询会话 + 64 条消息、
---       25 条情绪日记、6 篇知识文章、8 条收藏。
+--       25 条情绪日记、6 篇知识文章。
 --
 -- 幂等：脚本第 1 节先删掉「自己上次造的数据」（用户名以 demo 开头、文章 id 以 d3m0 开头），
 --       再整体重建，因此可以反复执行；**不会**碰 admin / test / ces / rmh / tester
@@ -25,9 +25,9 @@
 --       所以列表页的图都能正常显示，不会出现裂图。
 -- 注意：last_emotion_analysis 只在最近两场会话上预置了缓存（字段名按
 --       DTO/response/SessionEmotionDTO.java），其余留空由 AI 按需重算。
--- 注意：第 5 节会先 INSERT IGNORE 补齐 4 个基础分类（库里已有就是 no-op）；
---       第 6 节收藏走 JOIN 文章表插入，引用的文章不在库里时那条自动跳过，不会报外键错。
---       ——这两处是为了让脚本在「空库」上也能跑通（自己演练时验证过）。
+-- 注意：第 5 节会先 INSERT IGNORE 补齐 4 个基础分类（库里已有就是 no-op），
+--       这样脚本在「空库」上也能跑通（自己演练时验证过）。
+-- 2026-10-17：`user_favorite` 表已删除（项目从未实现收藏功能），本脚本不再写收藏数据。
 -- ============================================================
 
 SET NAMES utf8mb4;
@@ -55,14 +55,6 @@ DELETE s FROM consultation_session s
 DELETE d FROM emotion_diary d
   JOIN user u ON d.user_id = u.id
  WHERE u.username LIKE 'demo%';
-
-DELETE f FROM user_favorite f
-  JOIN user u ON f.user_id = u.id
- WHERE u.username LIKE 'demo%';
-
--- 演示文章可能被别人收藏过，先清收藏再删文章
-DELETE f FROM user_favorite f
- WHERE f.article_id LIKE 'd3m0%';
 
 DELETE a FROM knowledge_article a WHERE a.id LIKE 'd3m0%';
 
@@ -282,35 +274,23 @@ VALUES
    '/files/bussiness/article/1792050120787-c371f11b.jpg', '睡眠,考试焦虑,放松训练', @author_id, 54, 1, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 2 DAY), '08:50:00'));
 
 -- ------------------------------------------------------------
--- 6. 收藏（文章既包括新写的 6 篇，也包括库里原有的 8 篇）
---    用 JOIN 文章表的写法插入：某篇文章不在库里时那条会被自动跳过，
---    既不会报外键错，也不影响其余收藏。
+-- 6. 收藏（已下线）
+--    2026-10-17：`user_favorite` 表已删除。项目从未实现收藏功能（无实体/Mapper/接口/前端入口），
+--    这张表只在文档与旧演示数据里出现过，属于脚手架遗留，故整表清理。
+--    将来若要做收藏，重新建表 + 幂等迁移脚本，不要再往本脚本里塞数据。
 -- ------------------------------------------------------------
-INSERT INTO user_favorite (user_id, article_id, created_at)
-SELECT t.uid, a.id, t.created_at
-  FROM (          SELECT @u_xiaoyu AS uid, 'd3m0a001-0000-4000-8000-000000000001' AS aid, TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 3 DAY), '21:30:00') AS created_at
-         UNION ALL SELECT @u_xiaoyu, 'd3m0a005-0000-4000-8000-000000000005', TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 2 DAY), '09:10:00')
-         UNION ALL SELECT @u_xiaoyu, '550e8400-e29b-41d4-a716-446655440002', TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '22:20:00')
-         UNION ALL SELECT @u_ahao,   'd3m0a002-0000-4000-8000-000000000002', TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 1 DAY), '23:20:00')
-         UNION ALL SELECT @u_ahao,   '550e8400-e29b-41d4-a716-446655440003', TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 4 DAY), '23:35:00')
-         UNION ALL SELECT @u_lanlan, 'd3m0a006-0000-4000-8000-000000000006', TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 2 DAY), '22:50:00')
-         UNION ALL SELECT @u_lanlan, '550e8400-e29b-41d4-a716-446655440007', TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 7 DAY), '23:05:00')
-         UNION ALL SELECT @u_zhou,   'd3m0a003-0000-4000-8000-000000000003', TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL 6 DAY), '20:15:00')
-       ) t
-  JOIN knowledge_article a ON a.id = t.aid;
 
 COMMIT;
 
 -- ------------------------------------------------------------
--- 7. 执行结果自检（应输出 5 个演示用户、6 场会话、64 条消息、25 条日记、6 篇文章、8 条收藏）
+-- 7. 执行结果自检（应输出 5 个演示用户、6 场会话、64 条消息、25 条日记、6 篇文章）
 -- ------------------------------------------------------------
 SELECT '演示数据写入完成' AS result;
 
 SELECT u.id, u.username, u.nickname, u.status,
        (SELECT COUNT(*) FROM consultation_session s WHERE s.user_id = u.id) AS sessions,
        (SELECT COUNT(*) FROM consultation_message m JOIN consultation_session s ON m.session_id = s.id WHERE s.user_id = u.id) AS messages,
-       (SELECT COUNT(*) FROM emotion_diary d WHERE d.user_id = u.id) AS diaries,
-       (SELECT COUNT(*) FROM user_favorite f WHERE f.user_id = u.id) AS favorites
+       (SELECT COUNT(*) FROM emotion_diary d WHERE d.user_id = u.id) AS diaries
   FROM user u
  WHERE u.username LIKE 'demo%'
  ORDER BY u.id;

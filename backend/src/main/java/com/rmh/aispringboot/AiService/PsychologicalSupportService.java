@@ -29,9 +29,9 @@ import java.util.List;
  * 本类负责四件事：前置校验、消息落库、会话首次访问时从数据库回灌历史记忆、
  * 把模型输出流原样转发出去。
  *
- * <p>记忆窗口由 {@link ChatMemoryProperties}（{@code chat.memory.max-messages}）决定大小：
- * 进程内持有权威副本，Redis 只做镜像（见 RedisChatMemoryRepository）。后端起服务后，
- * 某个会话第一次被访问时仍会用 consultation_message 回灌（Redis 预热不到时的兜底）。
+ * <p>记忆窗口由 {@link ChatMemoryProperties}（{@code chat.memory.max-messages}）决定大小，
+ * 记忆只存在进程内（{@code MessageWindowChatMemory}）。进程重启后窗口为空，某个会话第一次被
+ * 访问时用 consultation_message 回灌最近 N 条，所以 MySQL 是唯一真相源。
  */
 @Slf4j
 @Service

@@ -56,8 +56,6 @@ public class RedisChatMemoryRepository implements ChatMemoryRepository {
 
     private static final String CHAT_KEY_INFIX = "chat:";
     private static final String SEPARATOR = "|";
-    /** 与 ChatClientConfig 的 maxMessages、PsychologicalSupportService 的 MEMORY_WINDOW_MESSAGES 保持一致 */
-    private static final int MAX_MESSAGES = 30;
     /** 7 天滑动：用户一周没来的会话记忆自然过期，避免长期占用内存 */
     private static final Duration TTL = Duration.ofDays(7);
 
@@ -68,10 +66,13 @@ public class RedisChatMemoryRepository implements ChatMemoryRepository {
 
     private final StringRedisTemplate redis;
     private final String keyPrefix;
+    /** 镜像最多保留的条数，由 chat.memory.max-messages 注入，必须与记忆窗口上限一致 */
+    private final int maxMessages;
 
-    public RedisChatMemoryRepository(StringRedisTemplate redis, String keyPrefix) {
+    public RedisChatMemoryRepository(StringRedisTemplate redis, String keyPrefix, int maxMessages) {
         this.redis = redis;
         this.keyPrefix = keyPrefix;
+        this.maxMessages = maxMessages > 0 ? maxMessages : 30;
     }
 
     @Override
@@ -193,7 +194,7 @@ public class RedisChatMemoryRepository implements ChatMemoryRepository {
                     operations.delete(key);
                     if (!encoded.isEmpty()) {
                         operations.opsForList().rightPushAll(key, encoded);
-                        operations.opsForList().trim(key, -MAX_MESSAGES, -1);
+                        operations.opsForList().trim(key, -maxMessages, -1);
                     }
                     operations.expire(key, TTL);
                     return operations.exec();

@@ -3,6 +3,7 @@ package com.rmh.aispringboot.AiService;
 import com.rmh.aispringboot.DTO.command.ConsultationSessionCreateDTO;
 import com.rmh.aispringboot.DTO.response.ConsultationMessageResponseDTO;
 import com.rmh.aispringboot.common.ConversationIds;
+import com.rmh.aispringboot.config.ChatMemoryProperties;
 import com.rmh.aispringboot.entity.ConsultationSession;
 import com.rmh.aispringboot.exception.BusinessException;
 import com.rmh.aispringboot.service.ConsultationMessageService;
@@ -28,8 +29,9 @@ import java.util.List;
  * 本类负责四件事：前置校验、消息落库、会话首次访问时从数据库回灌历史记忆、
  * 把模型输出流原样转发出去。
  *
- * <p>注意：记忆窗口是进程内的（MessageWindowChatMemory），后端重启即清空，
- * 所以每次会话第一次被访问时都要用 consultation_message 回灌，否则 AI 会「失忆」。
+ * <p>记忆窗口由 {@link ChatMemoryProperties}（{@code chat.memory.max-messages}）决定大小：
+ * 进程内持有权威副本，Redis 只做镜像（见 RedisChatMemoryRepository）。后端起服务后，
+ * 某个会话第一次被访问时仍会用 consultation_message 回灌（Redis 预热不到时的兜底）。
  */
 @Slf4j
 @Service
@@ -49,12 +51,14 @@ public class PsychologicalSupportService {
     private static final int SENDER_TYPE_AI = 2;
     /** 模型标识，落库时记录 */
     private static final String MODEL_NAME = "openai";
-    /** 回灌记忆时最多取多少条历史消息，需与 ChatClientConfig 的 maxMessages 保持一致 */
-    private static final int MEMORY_WINDOW_MESSAGES = 30;
 
     @Autowired
     @Qualifier("open-ai")
     private ChatClient chatClient;
+
+    /** 记忆窗口上限（chat.memory.max-messages），窗口装配、Redis 镜像 LTRIM、历史回灌三处共用 */
+    @Autowired
+    private ChatMemoryProperties chatMemoryProperties;
 
     /**
      * 与 MessageChatMemoryAdvisor 共用的记忆窗口，回灌历史时直接写它
@@ -152,7 +156,7 @@ public class PsychologicalSupportService {
      *
      * <p>MessageChatMemoryAdvisor 用的 MessageWindowChatMemory 只活在进程内存里，
      * 后端一重启就全空，AI 会「失忆」。这里在会话第一次被访问时，把
-     * consultation_message 里最近的 MEMORY_WINDOW_MESSAGES 条历史塞回记忆窗口，
+     * consultation_message 里最近的「chat.memory.max-messages」条历史塞回记忆窗口，
      * 之后仍由 advisor 正常增量维护。已经在内存里的活跃会话直接跳过。
      *
      * <p>注意：本次用户消息可能已经落库（见 {@link #isInitialMessage}），
@@ -183,7 +187,8 @@ public class PsychologicalSupportService {
                 end--;
             }
 
-            int start = Math.max(0, end - MEMORY_WINDOW_MESSAGES);
+            int windowMessages = chatMemoryProperties.getMaxMessages();
+            int start = Math.max(0, end - windowMessages);
             List<Message> messages = new ArrayList<>(end - start);
             for (int i = start; i < end; i++) {
                 ConsultationMessageResponseDTO item = history.get(i);

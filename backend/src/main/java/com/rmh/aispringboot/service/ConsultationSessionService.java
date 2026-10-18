@@ -122,7 +122,7 @@ public class ConsultationSessionService {
         }
         consultationMessageService.deleteBySessionId(sessionId);
         consultationSessionMapper.deleteById(sessionId);
-        // 记忆窗口不在库里，删会话要顺手清掉，否则 Redis 里会留下再也访问不到的 key
+        // 记忆窗口在进程内存里、不在库里，删会话要顺手清掉，否则同一 conversationId 复用时会把旧上下文带回来
         try {
             chatMemory.clear(ConversationIds.ofSessionId(sessionId));
         } catch (Exception e) {

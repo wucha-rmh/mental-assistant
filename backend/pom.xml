@@ -34,7 +34,8 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jdbc</artifactId>
 		</dependency>
-		<!-- Redis：对话记忆窗口（ChatMemoryRepository 实现）与后台看板缓存 -->
+		<!-- Redis：当前没有代码使用（记忆窗口已回到进程内），留给后续配额限流 / 看板缓存等场景；
+		     引入后启动不会主动连接，服务器没装 Redis 也不影响启动 -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-redis</artifactId>

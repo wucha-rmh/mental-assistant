@@ -56,7 +56,7 @@ public class PsychologicalSupportService {
     @Qualifier("open-ai")
     private ChatClient chatClient;
 
-    /** 记忆窗口上限（chat.memory.max-messages），窗口装配、Redis 镜像 LTRIM、历史回灌三处共用 */
+    /** 记忆窗口上限（chat.memory.max-messages），窗口装配与历史回灌共用 */
     @Autowired
     private ChatMemoryProperties chatMemoryProperties;
 

@@ -49,18 +49,18 @@ stream:
   # 配 0 或负数则不加延时，完全跟随模型出词节奏（更快，但可能整段弹出）。
   chunk-delay-ms: 20
 
-# 对话记忆窗口（唯一配置源：窗口裁剪、Redis 镜像 LTRIM、历史回灌三处都读它）
-# 同前缀下的 store（memory / redis）只在本机 application-local.yaml 里打开，生产用 CHAT_MEMORY_STORE=redis
+# 对话记忆窗口（唯一配置源：窗口装配与历史回灌两处都读它）
+# 记忆只在本进程内存里，重启后由 consultation_message 回灌（见 AiService/PsychologicalSupportService）
 chat:
   memory:
     # 窗口最多保留多少条消息，一问一答算 2 条（30 条 ≈ 15 轮对话）
     # 也可以用环境变量覆盖：CHAT_MEMORY_MAX_MESSAGES=60
     max-messages: 30
 
-# 本项目自己的 Redis 命名约定（连哪个 Redis 由 spring.data.redis.* 决定，生产走环境变量）
+# 本项目的 Redis 命名约定（当前没有代码读它，留给后续配额限流 / 看板缓存等场景）
 app:
   redis:
-    # 所有 key 的统一前缀：{prefix}chat:{conversationId}、{prefix}analytics:overview::…
-    # 本机开发在 application-local.yaml 里覆盖成 mha:dev:，避免与线上同名会话互相覆盖
+    # 将来往 Redis 写业务 key 时用它拼前缀，例如 {prefix}quota:user:day:20261018:11
+    # 本机开发在 application-local.yaml 里覆盖成 mha:dev:，避免与线上同名 key 互相覆盖
     key-prefix: "mha:"
 
